@@ -1,0 +1,48 @@
+# linuxqq-clipsync install script
+# Deploys an OpenRC USER service (/etc/user/init.d/linuxqq-clipsync) that runs
+# as a supervise-daemon in the user session, in the same style as
+# pipewire-openrc. It is NOT auto-enabled; the admin enables it per-user with:
+#   rc-update -U add linuxqq-clipsync default
+# On removal we only clean up each user's OpenRC default runlevel entry for
+# this service (no-op if it was never enabled). systemd is not targeted
+# because this machine is OpenRC/elogind.
+
+cleanup_user_runlevels() {
+    if ! command -v rc-update >/dev/null 2>&1; then
+        return 0
+    fi
+    # Iterate over existing users (skip system accounts) and remove the
+    # service from their user runlevels if they had enabled it.
+    for u in $(cut -d: -f1,3,6 /etc/passwd | awk -F: '$2 >= 1000 && $3 != "" {print $1 "=" $3}'); do
+        user="${u%%=*}"
+        uid="${u##*=}"
+        rvdir="/run/user/${uid}"
+        if [ -d "${rvdir}" ]; then
+            su -s /bin/sh "${user}" -c "rc-update -U del linuxqq-clipsync default >/dev/null 2>&1 || true" 2>/dev/null || true
+        fi
+    done
+}
+
+pre_install() {
+    :
+}
+
+post_install() {
+    :
+}
+
+pre_upgrade() {
+    cleanup_user_runlevels
+}
+
+post_upgrade() {
+    :
+}
+
+pre_remove() {
+    cleanup_user_runlevels
+}
+
+post_remove() {
+    :
+}

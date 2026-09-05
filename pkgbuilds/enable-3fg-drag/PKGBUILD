@@ -1,0 +1,36 @@
+# Maintainer: Fuego <2658524947@qq.com>
+# Turn on libinput's native macOS-style three-finger drag in Wayland
+# compositors (like niri) that don't expose the option themselves.
+# Based on https://github.com/joaodriessen/enable-3fg-drag (MIT)
+
+pkgname=enable-3fg-drag
+pkgver=1.0
+pkgrel=1
+pkgdesc="Turn on libinput's native 3-finger drag for Wayland compositors that don't expose it"
+arch=('x86_64')
+url="https://github.com/joaodriessen/enable-3fg-drag"
+license=('MIT')
+depends=('libinput>=1.31')
+makedepends=('gcc' 'make' 'pkgconf')
+install='enable-3fg-drag.install'
+source=("enable-3fg-drag.c::https://raw.githubusercontent.com/joaodriessen/enable-3fg-drag/main/enable-3fg-drag.c"
+        "Makefile::https://raw.githubusercontent.com/joaodriessen/enable-3fg-drag/main/Makefile"
+        "LICENSE::https://raw.githubusercontent.com/joaodriessen/enable-3fg-drag/main/LICENSE")
+sha256sums=('SKIP'
+            'SKIP'
+            'SKIP')
+
+build() {
+    # Override the injected Arch LDFLAGS (which are for PIE executables and
+    # inject -Wl,-z,now etc.) so the shim builds as a clean shared library.
+    CFLAGS='-O2 -Wall -Wextra -fPIC' LDFLAGS='-shared' make
+}
+
+package() {
+    # The shim is installed with setuid bit so the dynamic loader honours
+    # it via bare soname (used when preloaded into secure-execution
+    # processes). A shared lib's setuid bit grants it no privilege itself.
+    install -Dm4755 -o root -g root "$srcdir/libenable-3fg-drag.so" \
+        "$pkgdir/usr/lib/libenable-3fg-drag.so"
+    install -Dm644 -t "$pkgdir/usr/share/licenses/$pkgname" LICENSE
+}

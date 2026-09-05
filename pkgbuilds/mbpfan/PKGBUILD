@@ -1,0 +1,42 @@
+# Maintainer: Fuego <2658524947@qq.com>
+# Upstream MBUILDER: https://github.com/linux-on-mac/mbpfan
+# Extra OpenRC init script added (upstream only ships a systemd unit).
+# The .install script auto-detects the init system (OpenRC vs systemd)
+# and enables the appropriate service on install.
+
+pkgname=mbpfan
+pkgver=2.4.0
+pkgrel=1
+pkgdesc='A simple daemon to control fan speed on all MacBook/MacBook Pros'
+arch=('x86_64' 'i686')
+url='https://github.com/linux-on-mac/mbpfan'
+license=('GPL-3.0-or-later')
+options=(lto)   # 强制 makepkg LTO (fat)
+makedepends=('git')
+depends=('glibc')
+provides=('mbpfan')
+conflicts=('mbpfan')
+install='mbpfan.install'
+source=("$pkgname::git+https://github.com/linux-on-mac/mbpfan.git#tag=v$pkgver"
+        "mbpfan.initd")
+md5sums=('9030df16eb2bbe616eadf9d1de477d90'
+         'SKIP')
+backup=('etc/mbpfan.conf')
+
+prepare() {
+    cd "$srcdir/$pkgname"
+    sed -i 's|\$(DESTDIR)/usr/sbin|$(DESTDIR)/usr/bin|g' 'Makefile'
+    sed -i 's|\$(DESTDIR)/lib/|$(DESTDIR)/usr/lib/|g' 'Makefile'
+}
+
+build() {
+    cd "$srcdir/$pkgname"
+    make
+}
+
+package() {
+    cd "$srcdir/$pkgname"
+    DESTDIR="$pkgdir" make install
+    install -Dm644 "mbpfan.service" "$pkgdir/usr/lib/systemd/system/mbpfan.service"
+    install -Dm755 "$srcdir/mbpfan.initd" "$pkgdir/etc/init.d/mbpfan"
+}

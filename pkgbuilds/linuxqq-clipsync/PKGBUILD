@@ -1,0 +1,41 @@
+# Maintainer: Fuego <2658524947@qq.com>
+# Upstream: https://github.com/SHORiN-KiWATA/linuxqq-clipsync
+#   (AUR: linuxqq-clipsync-git, by shorin)
+# OpenRC USER service added (modelled after pipewire-openrc) because upstream
+# only ships a systemd user unit. The init script lives in /etc/user/init.d/
+# and runs as a supervise-daemon in the user session via `rc-update -U`.
+# The systemd user unit is intentionally NOT packaged (OpenRC/elogind only).
+# The .install script cleans up user runlevel entries.
+
+pkgname=linuxqq-clipsync
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Clone/clipboard sync between X11 and Wayland to fix LinuxQQ clipboard quirks under Wayland'
+arch=('x86_64')
+url='https://github.com/SHORiN-KiWATA/linuxqq-clipsync'
+license=('MIT')
+depends=('xclip' 'wl-clipboard' 'clipnotify')
+makedepends=('git' 'cargo')
+provides=('linuxqq-clipsync' 'clipsync')
+conflicts=('linuxqq-clipsync-git')
+install='linuxqq-clipsync.install'
+source=("linuxqq-clipsync::git+https://github.com/SHORiN-KiWATA/linuxqq-clipsync.git"
+        "linuxqq-clipsync.initd")
+sha256sums=('SKIP'
+            'SKIP')
+
+build() {
+    cd "$srcdir/linuxqq-clipsync"
+    cargo build --release --locked --all-features
+}
+
+check() {
+    cd "$srcdir/linuxqq-clipsync"
+    cargo test --release --locked
+}
+
+package() {
+    cd "$srcdir/linuxqq-clipsync"
+    install -Dm755 "target/release/linuxqq-clipsync" "${pkgdir}/usr/bin/linuxqq-clipsync"
+    install -Dm755 "$srcdir/linuxqq-clipsync.initd" "${pkgdir}/etc/user/init.d/linuxqq-clipsync"
+}

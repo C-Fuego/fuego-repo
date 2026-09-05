@@ -1,0 +1,29 @@
+#!/bin/bash
+
+error() {
+    echo $@ >&2
+    exit 1
+}
+
+json=$(curl -sS https://qq-web.cdn-go.cn/im.qq.com_new/latest/rainbow/pcConfig.json)
+
+echo version=$(echo  "$json" | jq -r ".Linux.version")
+echo updateDate=$(echo  "$json" | jq -r ".Linux.updateDate")
+
+[ -n "$*" ] || set x86_64
+
+for arch do
+    case $arch in
+        x86_64)
+            config_index=x64DownloadUrl
+            ;;
+        aarch64)
+            config_index=armDownloadUrl
+            ;;
+        *)
+            error "This arch is currently not supported"
+            ;;
+    esac
+
+    echo url_${arch}=$(echo  "$json" | jq -r ".Linux.${config_index}.appimage")
+done

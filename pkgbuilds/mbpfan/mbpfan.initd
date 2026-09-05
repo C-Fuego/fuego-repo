@@ -1,0 +1,33 @@
+#!/sbin/openrc-run
+# OpenRC init script for mbpfan (MacBook fan control daemon)
+# Maintainer: Fuego <2658524947@qq.com>
+
+name="mbpfan"
+description="mbpfan - daemon to control fan speed on MacBook/MacBook Air"
+command="/usr/bin/mbpfan"
+pidfile="/run/mbpfan.pid"
+command_background=false
+
+depend() {
+    use localmount
+}
+
+start_pre() {
+    # mbpfan needs the applesmc and coretemp modules loaded
+    modprobe -q applesmc 2>/dev/null || true
+    modprobe -q coretemp 2>/dev/null || true
+    checkpath -q -d -m 0755 /run
+}
+
+start() {
+    ebegin "Starting ${name}"
+    start-stop-daemon --start --quiet --background \
+        --pidfile "${pidfile}" --exec "${command}"
+    eend $?
+}
+
+stop() {
+    ebegin "Stopping ${name}"
+    start-stop-daemon --stop --quiet --pidfile "${pidfile}" --exec "${command}"
+    eend $?
+}

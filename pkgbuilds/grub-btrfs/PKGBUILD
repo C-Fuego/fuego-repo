@@ -1,0 +1,28 @@
+# Maintainer: Fuego <2658524947@qq.com>
+
+pkgname=grub-btrfs
+pkgver=4.14
+pkgrel=2
+pkgdesc="Include btrfs snapshots in GRUB boot options (with integrated grub-btrfsd service)"
+arch=('any')
+url="https://github.com/Antynea/grub-btrfs"
+license=('GPL3')
+depends=('bash' 'grub' 'btrfs-progs')
+provides=('grub-btrfs-openrc')
+conflicts=('grub-btrfs-openrc')
+replaces=('grub-btrfs-openrc')
+install='grub-btrfs.install'
+backup=('etc/default/grub-btrfs/config' 'etc/conf.d/grub-btrfsd')
+
+source=("${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+    cd "grub-btrfs-${pkgver}"
+    # Install the daemon and its service files for both init systems.
+    # The .install script prunes whichever service set doesn't match the
+    # running init system at install time (no auto-enabling).
+    make PREFIX=/usr DESTDIR="${pkgdir}" \
+        SYSTEMD=true OPENRC=true INITCPIO=true \
+        GRUB_UPDATE_EXCLUDE=true install
+}

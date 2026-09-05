@@ -1,0 +1,39 @@
+# mbpfan install script
+# Deploys service files without auto-enabling them. The service is left
+# for the user/admin to enable manually. On removal we only clean up the
+# OpenRC default runlevel entry if the admin happened to enable it.
+
+cleanup_default_runlevel() {
+    # OpenRC: remove from default runlevel if present (no-op if absent).
+    if command -v rc-update >/dev/null 2>&1; then
+        rc-update del mbpfan default >/dev/null 2>&1 || true
+    fi
+    # systemd: disable (no-op if not enabled).
+    if [ -d /run/systemd/system ]; then
+        systemctl disable mbpfan.service >/dev/null 2>&1 || true
+    fi
+}
+
+pre_install() {
+    :
+}
+
+post_install() {
+    :
+}
+
+pre_upgrade() {
+    :
+}
+
+post_upgrade() {
+    :
+}
+
+pre_remove() {
+    cleanup_default_runlevel
+}
+
+post_remove() {
+    :
+}

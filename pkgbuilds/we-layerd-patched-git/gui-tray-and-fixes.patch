@@ -1,0 +1,640 @@
+From 31da10abbf370b11410f865674f76a77b4cc4ed7 Mon Sep 17 00:00:00 2001
+From: C-Fuego <fuego@localhost>
+Date: Mon, 24 Aug 2026 17:56:51 +0800
+Subject: [PATCH] feat(gui): tray-only startup, single-instance guard, safe
+ daemon shutdown
+
+- add CLI options: --hidden, -h/--help, -V/--version
+- add start_hidden preference persisted in ~/.config/we-layerd/gui.toml
+- start without opening the main window when hidden is requested; the
+  window can be reopened from the tray menu at any time
+- guard against multiple GUI instances via an XDG runtime socket; a
+  second launch asks the running instance to show its window
+- only stop the we-layerd daemon on exit when this GUI process spawned
+  it, leaving independently started daemons untouched
+---
+ apps/we-gui/src/app/init.rs                 |  19 +--
+ apps/we-gui/src/app/mod.rs                  | 113 +++++++++++++++-
+ apps/we-gui/src/app/state.rs                |  11 +-
+ apps/we-gui/src/app/update.rs               |  22 +++-
+ apps/we-gui/src/main.rs                     |  99 +++++++++++++-
+ apps/we-gui/src/platform/mod.rs             |   1 +
+ apps/we-gui/src/platform/single_instance.rs | 135 ++++++++++++++++++++
+ apps/we-gui/src/services/preferences.rs     |   8 ++
+ 8 files changed, 387 insertions(+), 21 deletions(-)
+ create mode 100644 apps/we-gui/src/platform/single_instance.rs
+
+diff --git a/apps/we-gui/src/app/init.rs b/apps/we-gui/src/app/init.rs
+index ada6e15..919a296 100644
+--- a/apps/we-gui/src/app/init.rs
++++ b/apps/we-gui/src/app/init.rs
+@@ -21,7 +21,7 @@ use crate::{
+ 
+ use super::{App, Message};
+ 
+-pub(crate) fn initialize() -> (App, Task<Message>) {
++pub(crate) fn initialize(start_hidden: bool) -> (App, Task<Message>) {
+     let preferences_path = preferences::path();
+     let preferences = preferences_path.as_deref().map(preferences::load).unwrap_or_default();
+     let language = preferences.language;
+@@ -86,8 +86,7 @@ pub(crate) fn initialize() -> (App, Task<Message>) {
+         .or_else(|| launch_settings.profiles.definitions.keys().next().cloned());
+     let profile_name_input = profile_selected.clone().unwrap_or_default();
+ 
+-    (
+-        App {
++    let app = App {
+             entries: Vec::new(),
+             selected_id: None,
+             selected_schema: UserPropertySchema { entries: Vec::new() },
+@@ -152,13 +151,17 @@ pub(crate) fn initialize() -> (App, Task<Message>) {
+                 include_web: preferences.shuffle_include_web,
+             },
+             playlist_migration_completed: preferences.playlist_migration_completed,
+-        },
+-        Task::batch(vec![
++            start_hidden: preferences.start_hidden,
++        };
++        let mut startup_tasks = vec![
+             Task::done(Message::AutoScan),
+             Task::perform(crate::services::runtime::fetch_outputs(), Message::OutputsLoaded),
+-            window::open(window::Settings::default()).1.map(Message::WindowOpened),
+-        ]),
+-    )
++        ];
++        if !(start_hidden || preferences.start_hidden) {
++            startup_tasks
++                .push(window::open(window::Settings::default()).1.map(Message::WindowOpened));
++        }
++        (app, Task::batch(startup_tasks))
+ }
+ 
+ pub(crate) fn detect_system_theme() -> Theme {
+diff --git a/apps/we-gui/src/app/mod.rs b/apps/we-gui/src/app/mod.rs
+index 37d3ba6..fc9878e 100644
+--- a/apps/we-gui/src/app/mod.rs
++++ b/apps/we-gui/src/app/mod.rs
+@@ -7,9 +7,9 @@ mod subscription;
+ mod update;
+ mod view;
+ pub(crate) use state::{App, Message};
+-pub fn run() -> iced::Result {
++pub fn run(start_hidden: bool) -> iced::Result {
+     signal::install().expect("install GUI shutdown signal handler");
+-    iced::daemon(init::initialize, update::update, view::daemon_view)
++    iced::daemon(move || init::initialize(start_hidden), update::update, view::daemon_view)
+         .title("we-gui")
+         .theme(|app: &App, _window| app.theme.clone())
+         .subscription(subscription::subscription)
+@@ -167,6 +167,7 @@ mod tests {
+             profile_name_input: String::new(),
+             legacy_shuffle: legacy_shuffle(),
+             playlist_migration_completed: true,
++            start_hidden: false,
+         };
+ 
+         let _task =
+@@ -197,7 +198,7 @@ mod tests {
+ 
+     #[cfg(unix)]
+     #[test]
+-    fn dropping_gui_stops_layerd() {
++    fn dropping_gui_leaves_unowned_daemon_running() {
+         let _lock = ENV_LOCK.lock().expect("environment lock");
+         let suffix = SystemTime::now().duration_since(UNIX_EPOCH).expect("system clock").as_nanos();
+         let temp = std::env::temp_dir().join(format!("we-gui-exit-{suffix}"));
+@@ -271,6 +272,107 @@ mod tests {
+             profile_name_input: String::new(),
+             legacy_shuffle: legacy_shuffle(),
+             playlist_migration_completed: true,
++            start_hidden: false,
++        };
++        drop(app);
++
++        match old_path {
++            Some(path) => std::env::set_var("PATH", path),
++            None => std::env::remove_var("PATH"),
++        }
++        match old_log {
++            Some(value) => std::env::set_var("WE_GUI_TEST_LOG", value),
++            None => std::env::remove_var("WE_GUI_TEST_LOG"),
++        }
++
++        let commands = fs::read_to_string(&log).unwrap_or_default();
++        assert!(
++            !commands.lines().any(|line| line == "ctl stop"),
++            "an unowned daemon must not be stopped when the GUI exits"
++        );
++        fs::remove_dir_all(temp).expect("remove test directory");
++    }
++
++    #[cfg(unix)]
++    #[test]
++    fn dropping_gui_stops_owned_daemon() {
++        let _lock = ENV_LOCK.lock().expect("environment lock");
++        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).expect("system clock").as_nanos();
++        let temp = std::env::temp_dir().join(format!("we-gui-exit-owned-{suffix}"));
++        let command = temp.join("we-layerd");
++        let log = temp.join("commands.log");
++        fs::create_dir_all(&temp).expect("create test directory");
++        fs::write(&command, "#!/bin/sh\nprintf '%s\n' \"$*\" >> \"$WE_GUI_TEST_LOG\"\n")
++            .expect("write fake we-layerd");
++        let mut permissions = fs::metadata(&command).expect("fake command metadata").permissions();
++        permissions.set_mode(0o755);
++        fs::set_permissions(&command, permissions).expect("make fake command executable");
++
++        let old_path = std::env::var_os("PATH");
++        let old_log = std::env::var_os("WE_GUI_TEST_LOG");
++        std::env::set_var("PATH", &temp);
++        std::env::set_var("WE_GUI_TEST_LOG", &log);
++
++        let owned_child =
++            std::process::Command::new("/usr/bin/sleep").arg("30").spawn().expect("spawn sleeper");
++
++        let app = App {
++            entries: Vec::new(),
++            selected_id: None,
++            selected_schema: UserPropertySchema { entries: Vec::new() },
++            resolution_width: String::new(),
++            resolution_height: String::new(),
++            config_path: temp.join("config.toml"),
++            runtime_child: Some(owned_child),
++            viewport_width: 1280.0,
++            layerd_available: true,
++            launch_settings: LaunchSettings::default(),
++            ui_settings: test_ui_settings(),
++            show_settings: false,
++            sidebar: None,
++            detail_tab: DetailTab::Actions,
++            playback_paused: false,
++            playback_running: true,
++            search_query: String::new(),
++            type_filter: None,
++            filtered_entry_indices: Vec::new(),
++            panes: pane_grid::State::with_configuration(pane_grid::Configuration::Pane(
++                Pane::Library,
++            )),
++            animated_previews: HashMap::new(),
++            gif_preview_desired: Default::default(),
++            gif_preview_loading: Default::default(),
++            gif_preview_failed: Default::default(),
++            gif_preview_generation: 0,
++            library_scroll_y: 0.0,
++            library_viewport_width: 860.0,
++            library_viewport_height: 720.0,
++            library_scan: Default::default(),
++            tray: None,
++            main_window_id: None,
++            theme: Theme::Dark,
++            runtime_shutdown: false,
++            outputs: Vec::new(),
++            selected_outputs: Default::default(),
++            running_source: None,
++            language: Language::English,
++            preferences_path: None,
++            runtime_status: RuntimeStatus::DaemonNotRunning,
++            preferences_generation: 0,
++            playlist_selected: None,
++            playlist_new_name_input: String::new(),
++            playlist_name_input: String::new(),
++            playlist_default_duration_input: String::new(),
++            playlist_entry_duration_inputs: Vec::new(),
++            runtime_playlist_active: None,
++            runtime_playlist_index: None,
++            runtime_outputs: Default::default(),
++            profile_selected: None,
++            profile_new_name_input: String::new(),
++            profile_name_input: String::new(),
++            legacy_shuffle: legacy_shuffle(),
++            playlist_migration_completed: true,
++            start_hidden: false,
+         };
+         drop(app);
+ 
+@@ -284,7 +386,10 @@ mod tests {
+         }
+ 
+         let commands = fs::read_to_string(&log).expect("read fake command log");
+-        assert!(commands.lines().any(|line| line == "ctl stop"));
++        assert!(
++            commands.lines().any(|line| line == "ctl stop"),
++            "a daemon spawned by the GUI must be stopped when the GUI exits"
++        );
+         fs::remove_dir_all(temp).expect("remove test directory");
+     }
+ 
+diff --git a/apps/we-gui/src/app/state.rs b/apps/we-gui/src/app/state.rs
+index d15c9d1..d01cbc8 100644
+--- a/apps/we-gui/src/app/state.rs
++++ b/apps/we-gui/src/app/state.rs
+@@ -79,6 +79,8 @@ pub(crate) struct App {
+     pub profile_name_input: String,
+     pub legacy_shuffle: LegacyShuffleMigration,
+     pub playlist_migration_completed: bool,
++    /// Whether the "start without opening the main window" preference is set.
++    pub start_hidden: bool,
+ }
+ 
+ #[derive(Debug, Clone, Default, PartialEq, Eq)]
+@@ -116,7 +118,14 @@ impl App {
+             return true;
+         }
+         self.runtime_shutdown = true;
+-        let stopped = crate::services::runtime::stop(&mut self.runtime_child);
++        // Only stop a daemon this GUI process spawned itself. A daemon that
++        // was already running (for example started by the session autostart)
++        // must keep rendering wallpapers after the GUI exits.
++        let stopped = if self.runtime_child.is_some() {
++            crate::services::runtime::stop(&mut self.runtime_child)
++        } else {
++            true
++        };
+         self.clear_playback_state();
+         stopped
+     }
+diff --git a/apps/we-gui/src/app/update.rs b/apps/we-gui/src/app/update.rs
+index 6679c70..1380652 100644
+--- a/apps/we-gui/src/app/update.rs
++++ b/apps/we-gui/src/app/update.rs
+@@ -736,6 +736,9 @@ pub(crate) fn update(app: &mut App, message: Message) -> Task<Message> {
+             if super::signal::take_shutdown_request() {
+                 return Task::done(Message::ExitRequested);
+             }
++            if crate::platform::single_instance::poll_show_request() {
++                return show_main_window(app);
++            }
+             if let Some(tray) = app.tray.as_mut() {
+                 if let Some(action) = tray.poll_action() {
+                     return Task::done(Message::TrayAction(action));
+@@ -749,13 +752,7 @@ pub(crate) fn update(app: &mut App, message: Message) -> Task<Message> {
+         }
+         Message::ExitRequested => exit_application(app),
+         Message::TrayAction(action) => match action {
+-            tray::TrayAction::ShowWindow => {
+-                if let Some(id) = app.main_window_id {
+-                    return window::gain_focus(id);
+-                }
+-                let (_id, task) = window::open(window::Settings::default());
+-                task.map(Message::WindowOpened)
+-            }
++            tray::TrayAction::ShowWindow => show_main_window(app),
+             tray::TrayAction::PlaySwitch => Task::done(Message::PlayPressed),
+             tray::TrayAction::NextPlaylistItem => Task::done(Message::PlaylistNext),
+             tray::TrayAction::Stop => Task::done(Message::StopPressed),
+@@ -784,6 +781,16 @@ fn exit_application(app: &mut App) -> Task<Message> {
+     iced::exit()
+ }
+ 
++/// Focuses the main window when present, otherwise opens a new one. Used by
++/// both the tray menu and "show" requests from secondary instances.
++fn show_main_window(app: &App) -> Task<Message> {
++    if let Some(id) = app.main_window_id {
++        return window::gain_focus(id);
++    }
++    let (_id, task) = window::open(window::Settings::default());
++    task.map(Message::WindowOpened)
++}
++
+ fn queue_library_scan(app: &mut App, workshop_path: String) -> Task<Message> {
+     match app.library_scan.request(workshop_path) {
+         Some(request) => start_library_scan(request),
+@@ -964,6 +971,7 @@ fn persist_gui_preferences(app: &App) -> Task<Message> {
+         shuffle_include_scene: app.legacy_shuffle.include_scene,
+         shuffle_include_web: app.legacy_shuffle.include_web,
+         playlist_migration_completed: app.playlist_migration_completed,
++        start_hidden: app.start_hidden,
+     };
+     Task::perform(async move { preferences::save(&path, preferences) }, move |result| {
+         Message::PreferencesSaved { generation, result }
+diff --git a/apps/we-gui/src/main.rs b/apps/we-gui/src/main.rs
+index 9d88eb9..decfd20 100644
+--- a/apps/we-gui/src/main.rs
++++ b/apps/we-gui/src/main.rs
+@@ -4,10 +4,107 @@ mod platform;
+ mod services;
+ mod ui;
+ 
++use platform::single_instance;
++
++const USAGE: &str = concat!(
++    "we-gui - GUI companion for we-layerd\n",
++    "\n",
++    "Usage: we-gui [OPTIONS]\n",
++    "\n",
++    "Options:\n",
++    "      --hidden     Start without showing the main window (tray only)\n",
++    "  -h, --help       Print help\n",
++    "  -V, --version    Print version\n",
++    "\n",
++    "The main window can be reopened anytime from the tray icon (\"Show Window\").\n",
++    "Set `start_hidden = true` in ~/.config/we-layerd/gui.toml to make tray-only\n",
++    "startup the default.\n",
++);
++
++struct Options {
++    start_hidden: bool,
++}
++
+ fn main() -> iced::Result {
+-    let result = app::run();
++    let options = match parse_options(std::env::args().skip(1)) {
++        Ok(Some(options)) => options,
++        Ok(None) => return Ok(()),
++        Err(error) => {
++            eprintln!("we-gui: {error}\n\nRun `we-gui --help` for usage information.");
++            std::process::exit(2);
++        }
++    };
++
++    if !single_instance::acquire_or_request_show() {
++        eprintln!("we-gui is already running; asked it to show its window.");
++        return Ok(());
++    }
++
++    let result = app::run(options.start_hidden);
+     if result.is_ok() && app::was_interrupted() {
+         std::process::exit(130);
+     }
+     result
+ }
++
++/// Parses CLI options. Returns `Ok(None)` when the program should exit early
++/// after printing help or version information.
++fn parse_options<I: Iterator<Item = String>>(arguments: I) -> Result<Option<Options>, String> {
++    let mut options = Options { start_hidden: false };
++    for argument in arguments {
++        match argument.as_str() {
++            "--hidden" => options.start_hidden = true,
++            "-h" | "--help" => {
++                print!("{USAGE}");
++                return Ok(None);
++            }
++            "-V" | "--version" => {
++                println!("we-gui {}", env!("CARGO_PKG_VERSION"));
++                return Ok(None);
++            }
++            other => return Err(format!("unrecognized argument '{other}'")),
++        }
++    }
++    Ok(Some(options))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::{parse_options, Options};
++
++    fn arguments(values: &[&str]) -> Vec<String> {
++        values.iter().map(|value| (*value).to_string()).collect()
++    }
++
++    #[test]
++    fn defaults_to_showing_the_window() {
++        let options = parse_options(arguments(&[]).into_iter()).expect("no arguments parse");
++        assert!(options.is_some_and(|options: Options| !options.start_hidden));
++    }
++
++    #[test]
++    fn hidden_flag_enables_tray_only_startup() {
++        let options = parse_options(arguments(&["--hidden"]).into_iter())
++            .expect("hidden flag parses")
++            .expect("options");
++        assert!(options.start_hidden);
++    }
++
++    #[test]
++    fn help_and_version_exit_early() {
++        assert!(parse_options(arguments(&["-h"]).into_iter()).expect("help parses").is_none());
++        assert!(parse_options(arguments(&["--help"]).into_iter()).expect("help parses").is_none());
++        assert!(parse_options(arguments(&["-V"]).into_iter()).expect("version parses").is_none());
++        assert!(
++            parse_options(arguments(&["--version"]).into_iter())
++                .expect("version parses")
++                .is_none()
++        );
++    }
++
++    #[test]
++    fn unknown_arguments_are_rejected() {
++        assert!(parse_options(arguments(&["--bogus"]).into_iter()).is_err());
++        assert!(parse_options(arguments(&["extra"]).into_iter()).is_err());
++    }
++}
+diff --git a/apps/we-gui/src/platform/mod.rs b/apps/we-gui/src/platform/mod.rs
+index 7047e70..bf71e75 100644
+--- a/apps/we-gui/src/platform/mod.rs
++++ b/apps/we-gui/src/platform/mod.rs
+@@ -1 +1,2 @@
++pub mod single_instance;
+ pub mod tray;
+diff --git a/apps/we-gui/src/platform/single_instance.rs b/apps/we-gui/src/platform/single_instance.rs
+new file mode 100644
+index 0000000..b9401f2
+--- /dev/null
++++ b/apps/we-gui/src/platform/single_instance.rs
+@@ -0,0 +1,135 @@
++use std::{
++    fs,
++    io::Write,
++    os::unix::net::{UnixListener, UnixStream},
++    path::PathBuf,
++    sync::OnceLock,
++};
++
++static SHOW_LISTENER: OnceLock<UnixListener> = OnceLock::new();
++
++const SHOW_REQUEST: &[u8] = b"show";
++
++/// Try to become the single primary we-gui instance.
++///
++/// Returns `true` when this process should run as the primary instance.
++/// Returns `false` when another instance is already listening; in that case a
++/// "show window" request was forwarded to it and the caller should exit.
++pub(crate) fn acquire_or_request_show() -> bool {
++    let path = socket_path();
++
++    if let Ok(listener) = UnixListener::bind(&path) {
++        install_listener(listener);
++        return true;
++    }
++
++    if request_show(&path) {
++        return false;
++    }
++
++    // The socket file exists but nobody answers: stale leftover from a crashed
++    // instance, so it is safe to remove and rebind.
++    let _ = fs::remove_file(&path);
++    match UnixListener::bind(&path) {
++        Ok(listener) => {
++            eprintln!("we-gui: recovered stale instance socket {}", path.display());
++            install_listener(listener);
++            true
++        }
++        Err(error) => {
++            eprintln!(
++                "we-gui: could not create instance socket ({error}); continuing without single-instance guard"
++            );
++            true
++        }
++    }
++}
++
++/// Poll for "show window" requests from secondary instances.
++///
++/// Any incoming connection counts as one request. The listener is
++/// non-blocking, so this is cheap to call from the regular tick handler.
++pub(crate) fn poll_show_request() -> bool {
++    let Some(listener) = SHOW_LISTENER.get() else { return false };
++    let mut requested = false;
++    while let Ok((_stream, _)) = listener.accept() {
++        requested = true;
++    }
++    requested
++}
++
++fn install_listener(listener: UnixListener) {
++    let _ = listener.set_nonblocking(true);
++    // If a listener was already installed this process is still the primary;
++    // the newly bound socket simply replaces the old one on disk.
++    let _ = SHOW_LISTENER.set(listener);
++}
++
++fn request_show(path: &PathBuf) -> bool {
++    let Ok(mut stream) = UnixStream::connect(path) else { return false };
++    stream.write_all(SHOW_REQUEST).is_ok()
++}
++
++fn socket_path() -> PathBuf {
++    if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR")
++        .filter(|value| !value.is_empty())
++        .map(PathBuf::from)
++        .filter(|value| value.is_absolute())
++    {
++        return dir.join("we-layerd/gui.sock");
++    }
++    PathBuf::from(format!("/tmp/we-layerd-gui-{}.sock", process_owner_uid()))
++}
++
++fn process_owner_uid() -> u32 {
++    #[cfg(target_os = "linux")]
++    {
++        use std::os::unix::fs::MetadataExt;
++        if let Ok(metadata) = fs::metadata("/proc/self") {
++            return metadata.uid();
++        }
++    }
++    0
++}
++
++#[cfg(test)]
++mod tests {
++    use super::{acquire_or_request_show, poll_show_request, socket_path};
++    use std::{os::unix::net::UnixListener, time::Duration, time::Instant};
++
++    // The instance socket is process-global state, so every scenario runs in
++    // one serialized test instead of parallel `#[test]` functions.
++    #[test]
++    fn single_instance_lifecycle_scenarios() {
++        let path = socket_path();
++        let _ = std::fs::remove_file(&path);
++
++        // Scenario 1: the first acquire wins and becomes primary.
++        assert!(acquire_or_request_show(), "first acquire should win the socket");
++
++        // Scenario 2: a secondary defers and its request reaches the primary.
++        let secondary =
++            std::thread::spawn(|| assert!(!acquire_or_request_show(), "secondary should defer"));
++        wait_for_show_request();
++        secondary.join().expect("secondary thread");
++
++        // Scenario 3: a leaked (stale) socket is recovered after rebinding.
++        let _ = std::fs::remove_file(&path);
++        let leaked = UnixListener::bind(&path).expect("bind leaked socket");
++        drop(leaked);
++        assert!(
++            acquire_or_request_show(),
++            "primary should recover a stale socket"
++        );
++
++        let _ = std::fs::remove_file(&path);
++    }
++
++    fn wait_for_show_request() {
++        let deadline = Instant::now() + Duration::from_secs(5);
++        while !poll_show_request() {
++            assert!(Instant::now() < deadline, "primary never observed show request");
++            std::thread::sleep(Duration::from_millis(10));
++        }
++    }
++}
+diff --git a/apps/we-gui/src/services/preferences.rs b/apps/we-gui/src/services/preferences.rs
+index 1ac29e6..095756f 100644
+--- a/apps/we-gui/src/services/preferences.rs
++++ b/apps/we-gui/src/services/preferences.rs
+@@ -18,6 +18,7 @@ pub(crate) struct GuiPreferences {
+     pub(crate) shuffle_include_scene: bool,
+     pub(crate) shuffle_include_web: bool,
+     pub(crate) playlist_migration_completed: bool,
++    pub(crate) start_hidden: bool,
+ }
+ 
+ impl Default for GuiPreferences {
+@@ -30,6 +31,7 @@ impl Default for GuiPreferences {
+             shuffle_include_scene: true,
+             shuffle_include_web: true,
+             playlist_migration_completed: false,
++            start_hidden: false,
+         }
+     }
+ }
+@@ -101,6 +103,7 @@ pub(crate) fn load(path: &Path) -> GuiPreferences {
+             "playlist_migration_completed",
+             defaults.playlist_migration_completed,
+         ),
++        start_hidden: preference_bool(&document, "start_hidden", defaults.start_hidden),
+     }
+ }
+ 
+@@ -118,6 +121,7 @@ pub(crate) fn save(path: &Path, preferences: GuiPreferences) -> Result<(), Strin
+             "shuffle_include_scene = {}\n",
+             "shuffle_include_web = {}\n",
+             "playlist_migration_completed = {}\n",
++            "start_hidden = {}\n",
+         ),
+         preferences.language.tag(),
+         preferences.shuffle_enabled,
+@@ -126,6 +130,7 @@ pub(crate) fn save(path: &Path, preferences: GuiPreferences) -> Result<(), Strin
+         preferences.shuffle_include_scene,
+         preferences.shuffle_include_web,
+         preferences.playlist_migration_completed,
++        preferences.start_hidden,
+     );
+     let (temporary, mut file) =
+         create_temporary_file(parent, file_name).map_err(|error| error.to_string())?;
+@@ -225,6 +230,7 @@ mod tests {
+                 shuffle_include_scene: false,
+                 shuffle_include_web: true,
+                 playlist_migration_completed: true,
++                start_hidden: true,
+             },
+         )
+         .expect("save preferences");
+@@ -237,6 +243,7 @@ mod tests {
+         assert!(!loaded.shuffle_include_scene);
+         assert!(loaded.shuffle_include_web);
+         assert!(loaded.playlist_migration_completed);
++        assert!(loaded.start_hidden);
+         assert_eq!(
+             fs::read_to_string(&path).expect("read preferences"),
+             concat!(
+@@ -247,6 +254,7 @@ mod tests {
+                 "shuffle_include_scene = false\n",
+                 "shuffle_include_web = true\n",
+                 "playlist_migration_completed = true\n",
++                "start_hidden = true\n",
+             )
+         );
+         assert!(fs::read_dir(path.parent().expect("preferences parent"))
+-- 
+2.55.0
+

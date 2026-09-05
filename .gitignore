@@ -1,0 +1,14 @@
+# 构建产物：pkgbuilds/ 里的 .zst 不跟踪，仅 packages/ 下的入库
+packages/fuego-repo/x86_64/*.old
+src/
+pkg/
+*.sig
+pkgbuilds/*/*.pkg.tar.zst
+# 上游跟踪状态 (CI 生成)
+.upstream/
+.needs-build
+# AUR 包自带杂项 (不追踪)
+pkgbuilds/*/.SRCINFO
+**/.gitlab-ci.yml
+**/get_latest.bak
+pkgbuilds/*/.gitignore

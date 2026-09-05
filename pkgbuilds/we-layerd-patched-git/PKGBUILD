@@ -1,0 +1,138 @@
+pkgname=we-layerd-patched-git
+_gitname=we-layerd
+pkgver=0.2.8.r100.g30d3417
+pkgrel=1
+pkgdesc='Wayland daemon and GUI for running Wallpaper Engine wallpapers through wallpaper-engine-renderer (with we-gui tray-only startup & daemon shutdown fixes)'
+arch=('x86_64')
+url='https://github.com/Aromatic05/we-layerd'
+license=('custom:unlicensed')
+options=(lto)   # 强制 makepkg LTO (fat)
+depends=(
+  'cef'
+  'directx-shader-compiler'
+  'fontconfig'
+  'freetype2'
+  'gstreamer'
+  'gst-libav'
+  'gst-plugins-bad-libs'
+  'gst-plugins-base-libs'
+  'gst-plugins-good'
+  'gtk3'
+  'libdrm'
+  'libglvnd'
+  'libva'
+  'libxkbcommon'
+  'lz4'
+  'mesa'
+  'pango'
+  'vulkan-icd-loader'
+  'wayland'
+  'xdotool'
+)
+optdepends=(
+  'gst-plugin-va: VA-API hardware video decoding'
+)
+makedepends=(
+  'cmake'
+  'git'
+  'pkgconf'
+  'rust'
+  'vulkan-headers'
+  'wayland-protocols'
+)
+provides=('we-layerd')
+conflicts=('we-layerd')
+source=(
+  "${_gitname}::git+${url}.git"
+  'gui-tray-and-fixes.patch'
+)
+b2sums=('SKIP' 'SKIP')
+
+pkgver() {
+  cd "${srcdir}/${_gitname}"
+
+  local base_version rev_count short_hash
+  base_version="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+  rev_count="$(git rev-list --count HEAD)"
+  short_hash="$(git rev-parse --short HEAD)"
+
+  printf '%s.r%s.g%s\n' "${base_version}" "${rev_count}" "${short_hash}"
+}
+
+prepare() {
+  cd "${srcdir}/${_gitname}"
+
+  git submodule update --init --recursive
+
+  # Make prepare() idempotent: discard previously applied patch state
+  # (makepkg's git checkout only restores tracked files).
+  git checkout -- .
+  git clean -fdq apps crates xtask
+  git -C third_party/wallpaper-engine-renderer checkout -- .
+
+  patch -Np1 --forward -i "${srcdir}/gui-tray-and-fixes.patch"
+
+  # Fix BONECOUNT shader combo: move AddPuppetShaderInfo outside the !hasEffect block
+  # so puppet meshes with effects still get the BONECOUNT/SKINNING combos.
+  # Idempotent: no-op when the fix is already applied in the current source.
+  python3 -c "
+import pathlib
+p = pathlib.Path('third_party/wallpaper-engine-renderer/src/backend/scene/internal/parser/WPSceneParser.cpp')
+text = p.read_text()
+old = '''        if (! hasEffect) {
+            svData.parallaxDepth = { wpimgobj.parallaxDepth[0], wpimgobj.parallaxDepth[1] };
+            if (hasAnimatedPuppetMesh) {
+                WPMdlParser::AddPuppetShaderInfo(shaderInfo, *puppet);
+            }
+        }'''
+new = '''        if (! hasEffect) {
+            svData.parallaxDepth = { wpimgobj.parallaxDepth[0], wpimgobj.parallaxDepth[1] };
+        }
+        if (hasAnimatedPuppetMesh) {
+            WPMdlParser::AddPuppetShaderInfo(shaderInfo, *puppet);
+        }'''
+if old in text:
+    p.write_text(text.replace(old, new, 1))
+    print('Applied BONECOUNT fix')
+else:
+    print('BONECOUNT fix already present, skipping')
+"
+
+  export CARGO_HOME="${srcdir}/cargo-home"
+  # 性能优化 (target-cpu=x86-64-v3, opt-level=3, lto=thin), 取自用户 ~/.cargo/config.toml 优化部分
+  cat > "${CARGO_HOME}/config.toml" <<'CARGOEOF'
+[env]
+RUSTFLAGS = "-C target-cpu=x86-64-v3"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+CARGOEOF
+  cargo fetch --locked
+}
+
+build() {
+  cd "${srcdir}/${_gitname}"
+  export CARGO_HOME="${srcdir}/cargo-home"
+  export CARGO_NET_OFFLINE=true
+  export WE_LAYERD_INSTALL_PREFIX=/usr
+  cargo build --frozen --offline --workspace --release
+}
+
+package() {
+  cd "${srcdir}/${_gitname}"
+
+  install -Dm755 target/release/we-layerd "${pkgdir}/usr/bin/we-layerd"
+  install -Dm755 target/release/we-gui "${pkgdir}/usr/bin/we-gui"
+  install -Dm644 apps/we-gui/assets/we-gui.desktop \
+    "${pkgdir}/usr/share/applications/we-gui.desktop"
+  install -Dm755 \
+    target/we-renderer-upstream/install/lib/libwallpaper-engine-renderer.so \
+    "${pkgdir}/usr/lib/libwallpaper-engine-renderer.so"
+  install -Dm755 \
+    target/we-renderer-upstream/install/lib/we-cef-helper \
+    "${pkgdir}/usr/lib/we-cef-helper"
+}

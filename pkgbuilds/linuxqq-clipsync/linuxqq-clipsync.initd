@@ -1,0 +1,19 @@
+#!/usr/bin/openrc-run
+# Copyright 2026 Fuego <2658524947@qq.com>
+# Distributed under the terms of the MIT License.
+#
+# OpenRC USER service for linuxqq-clipsync, modelled after pipewire-openrc.
+# Runs as a supervise-daemon in the user session, so the process inherits the
+# user's XDG_RUNTIME_DIR / WAYLAND_DISPLAY / DISPLAY and can probe both the
+# Wayland and X11 clipboards. Enable via:
+#   rc-update -U add linuxqq-clipsync default
+
+description="Clipboard sync (X11 <-> Wayland) for LinuxQQ"
+
+supervisor=supervise-daemon
+command="/usr/bin/linuxqq-clipsync"
+respawn_delay=3
+
+# The daemon exits(1) when it cannot detect a live graphics session (e.g. no
+# Wayland or X server yet). supervise-daemon restarts it; the small respawn
+# delay prevents a hot restart loop during early login.

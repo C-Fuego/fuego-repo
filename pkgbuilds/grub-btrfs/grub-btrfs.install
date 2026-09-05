@@ -1,0 +1,67 @@
+# grub-btrfs install script
+# The package ships both OpenRC (initd + confd) and systemd service files.
+# On install/upgrade we keep only the set that matches the running init
+# system. The service is NOT auto-enabled; on removal we only clean up
+# runlevel/target entries the admin may have enabled manually.
+
+keep_openrc() {
+    rm -f /usr/lib/systemd/system/grub-btrfsd.service
+}
+
+keep_systemd() {
+    rm -f /etc/init.d/grub-btrfsd
+    rm -f /etc/conf.d/grub-btrfsd
+}
+
+detect_init() {
+    if [ -e /run/systemd/system ]; then
+        echo "systemd"
+    elif command -v rc-update >/dev/null 2>&1 && [ -d /run/openrc ]; then
+        echo "openrc"
+    else
+        echo "unknown"
+    fi
+}
+
+prune_mismatched() {
+    case "$(detect_init)" in
+        systemd) keep_systemd ;;
+        openrc)  keep_openrc ;;
+        *)
+            echo "grub-btrfs: unknown init system, leaving all service files" >&2
+            ;;
+    esac
+}
+
+cleanup_enabled() {
+    if [ -d /run/systemd/system ]; then
+        systemctl disable grub-btrfsd.service >/dev/null 2>&1 || true
+    fi
+    if command -v rc-update >/dev/null 2>&1; then
+        rc-update del grub-btrfsd default >/dev/null 2>&1 || true
+    fi
+}
+
+pre_install() {
+    :
+}
+
+post_install() {
+    prune_mismatched
+}
+
+pre_upgrade() {
+    :
+}
+
+post_upgrade() {
+    prune_mismatched
+}
+
+pre_remove() {
+    cleanup_enabled
+}
+
+post_remove() {
+    :
+}

@@ -1,0 +1,12 @@
+# CI 构建优化配置 (取自 ~/.cargo/config.toml 的优化部分, 已去除国内镜像 — CI runner 用官方源更快)
+# 由 GitHub Actions 复制到 $CARGO_HOME/config.toml, 以及 we-layerd/niri-fork 等私有 CARGO_HOME
+
+[env]
+RUSTFLAGS = "-C target-cpu=x86-64-v3"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
