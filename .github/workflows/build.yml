@@ -42,7 +42,7 @@ jobs:
           # makepkg 拒绝 root → 建 builder 用户
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
-          chown -R builder:builder "${{ github.workspace }}"
+          chown -R builder:builder "$PWD"
           # Rust 优化 config → builder 的 CARGO_HOME (覆盖不含私有 CARGO_HOME 的 rust 包)
           install -d -o builder -g builder /home/builder/.cargo
           install -o builder -g builder ci/cargo-config.toml /home/builder/.cargo/config.toml
@@ -50,9 +50,10 @@ jobs:
       - name: 轮询上游 & 确定构建清单
         id: plan
         run: |
-          cd "${{ github.workspace }}"
+          # 容器模式: 默认 cwd 即容器内 checkout 目录 (/__w/<repo>/<repo>)
+          # GITHUB_WORKSPACE 指向宿主 /home/runner/... (容器内不存在), 故统一用 $PWD
           if [[ "${{ github.event_name }}" == "schedule" ]]; then
-            su builder -c 'cd "${{ github.workspace }}" && ./check-upstream.sh' \
+            su builder -c "cd '$PWD' && ./check-upstream.sh" \
               && echo "NO_CHANGE=false" >> "$GITHUB_ENV" \
               || echo "NO_CHANGE=true" >> "$GITHUB_ENV"
           else
@@ -63,20 +64,18 @@ jobs:
       - name: 构建包
         if: env.NO_CHANGE == 'false'
         run: |
-          cd "${{ github.workspace }}"
           if [[ "${FULL_BUILD:-}" == "true" ]]; then
-            su builder -c 'cd "${{ github.workspace }}" && ./build.sh --all'
+            su builder -c "cd '$PWD' && ./build.sh --all"
           else
-            su builder -c 'cd "${{ github.workspace }}" && ./build.sh'
+            su builder -c "cd '$PWD' && ./build.sh"
           fi
 
       - name: 提交产物与上游跟踪
         if: env.NO_CHANGE == 'false'
         run: |
-          cd "${{ github.workspace }}"
           git config user.name "fuego-ci"
           git config user.email "fuego-ci@users.noreply.github.com"
-          git add packages/ pkgbuilds/ .upstream/
+          git add -- packages/ pkgbuilds/
           if git diff --cached --quiet; then
             echo "无产物变更, 跳过提交"
           else
@@ -89,7 +88,6 @@ jobs:
       - name: 镜像到 Codeberg
         if: env.NO_CHANGE == 'false'
         run: |
-          cd "${{ github.workspace }}"
           CODEBERG_URL="https://${CODEBERG_USER}:${CODEBERG_TOKEN}@codeberg.org/${CODEBERG_OWNER}/${CODEBERG_REPO}.git"
           git remote add codeberg "$CODEBERG_URL" 2>/dev/null || \
             git remote set-url codeberg "$CODEBERG_URL"
