@@ -31,6 +31,20 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: DEBUG-容器路径探测
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          echo "== pwd =="; pwd
+          echo "== GITHUB_WORKSPACE env =="; echo "$GITHUB_WORKSPACE"
+          echo "== github.workspace (来自 runner 上下文) =="; echo "${{ github.workspace }}"
+          echo "== 当前目录内容 =="; ls -la
+          echo "== git rev-parse =="; git rev-parse --show-toplevel 2>&1 || true
+          echo "== 找 .git =="; find / -maxdepth 4 -name ".git" -type d 2>/dev/null
+          echo "== /home/runner/work 挂载 =="; ls -la /home/runner/work/fuego-repo/ 2>&1 | head
+          echo "== /__w =="; ls -la /__w/ 2>&1 | head
+          exit 1
+
       # ── 构建环境: 基础 + 编译优化 ──
       - name: 准备构建环境
         run: |
