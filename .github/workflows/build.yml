@@ -5,6 +5,10 @@ name: build
 #   2. workflow_dispatch — 手动全量构建
 #   3. push 到 pkgbuilds/** — 改补丁/版本时全量构建
 # 产物 + PKGBUILD bump 变更 commit 回 GitHub, 并镜像到 Codeberg。
+#
+# 设计说明: 宿主用 ubuntu-latest (自带 git, checkout 产生标准 .git),
+# 构建时 docker run 进入 archlinux 容器执行 makepkg, workspace 以 -v 挂载,
+# 产物落在宿主工作区, 之后用宿主 git 提交/推送 (避免容器内无 .git 的问题)。
 on:
   schedule:
     - cron: '17 3 * * *'
@@ -22,68 +26,28 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
-      options: --cap-add=SYS_ADMIN --security-opt seccomp=unconfined
     steps:
       - name: 检出仓库
         uses: actions/checkout@v4
         with:
           persist-credentials: false
 
-      - name: DEBUG-容器路径探测
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          echo "== pwd =="; pwd
-          echo "== GITHUB_WORKSPACE env =="; echo "$GITHUB_WORKSPACE"
-          echo "== github.workspace (来自 runner 上下文) =="; echo "${{ github.workspace }}"
-          echo "== 当前目录内容 =="; ls -la
-          echo "== git rev-parse =="; git rev-parse --show-toplevel 2>&1 || true
-          echo "== 找 .git =="; find / -maxdepth 4 -name ".git" -type d 2>/dev/null
-          echo "== /home/runner/work 挂载 =="; ls -la /home/runner/work/fuego-repo/ 2>&1 | head
-          echo "== /__w =="; ls -la /__w/ 2>&1 | head
-          exit 1
-
-      # ── 构建环境: 基础 + 编译优化 ──
-      - name: 准备构建环境
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed base-devel git sudo curl jq zig clang llvm nodejs npm
-          # 全部 C/C++ 项目优化: march=x86-64-v3 + O3 (对应 Rust 的 target-cpu=x86-64-v3)
-          sed -i 's|^CFLAGS=.*|CFLAGS="-march=x86-64-v3 -O3 -pipe -fno-plt -fexceptions"|' /etc/makepkg.conf
-          sed -i 's|^LDFLAGS=.*|LDFLAGS="-Wl,-O1 -Wl,--sort-common -Wl,--as-needed -Wl,-z,relro -Wl,-z,now"|' /etc/makepkg.conf
-          # makepkg 拒绝 root → 建 builder 用户
-          useradd -m builder
-          echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
-          chown -R builder:builder "$PWD"
-          # Rust 优化 config → builder 的 CARGO_HOME (覆盖不含私有 CARGO_HOME 的 rust 包)
-          install -d -o builder -g builder /home/builder/.cargo
-          install -o builder -g builder ci/cargo-config.toml /home/builder/.cargo/config.toml
-
       - name: 轮询上游 & 确定构建清单
         id: plan
         run: |
-          # 容器模式: 默认 cwd 即容器内 checkout 目录 (/__w/<repo>/<repo>)
-          # GITHUB_WORKSPACE 指向宿主 /home/runner/... (容器内不存在), 故统一用 $PWD
           if [[ "${{ github.event_name }}" == "schedule" ]]; then
-            su builder -c "cd '$PWD' && ./check-upstream.sh" \
+            ./check-upstream.sh 2>&1 \
               && echo "NO_CHANGE=false" >> "$GITHUB_ENV" \
               || echo "NO_CHANGE=true" >> "$GITHUB_ENV"
           else
             echo "NO_CHANGE=false" >> "$GITHUB_ENV"
-            echo "FULL_BUILD=true" >> "$GITHUB_ENV"
           fi
 
-      - name: 构建包
+      - name: 构建包 (docker archlinux 容器内)
         if: env.NO_CHANGE == 'false'
         run: |
-          if [[ "${FULL_BUILD:-}" == "true" ]]; then
-            su builder -c "cd '$PWD' && ./build.sh --all"
-          else
-            su builder -c "cd '$PWD' && ./build.sh"
-          fi
-
+          docker run --rm -v "$PWD":/work -w /work archlinux:latest \
+            bash /work/ci/container-env.sh
       - name: 提交产物与上游跟踪
         if: env.NO_CHANGE == 'false'
         run: |
