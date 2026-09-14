@@ -24,6 +24,6 @@ fi
 sed -i \
     -e "s|^pkgver=.*|pkgver=${latest}|" \
     -e "s|^pkgrel=.*|pkgrel=1|" \
-    -e "s|JetBrainsMapleMono-XX-XX-XX-\${pkgver}.zip::https://github.com/SpaceTimee/Fusion-JetBrainsMapleMono/releases/download/\${pkgver}/JetBrainsMapleMono-XX-XX-XX.zip|JetBrainsMapleMono-XX-XX-XX-${latest}.zip::https://github.com/SpaceTimee/Fusion-JetBrainsMapleMono/releases/download/${latest}/JetBrainsMapleMono-XX-XX-XX.zip|" \
+    -e "s|JetBrainsMapleMono-XX-XX-XX-\${pkgver}.zip::https://github.com/SpaceTimee/Fusion-JetBrainsMapleMono/releases/download/\${pkgver}/JetBrainsMapleMono-XX-XX-XX.zip|JetBrainsMapleMono-XX-XX-XX-XX-${latest}.zip::https://github.com/SpaceTimee/Fusion-JetBrainsMapleMono/releases/download/${latest}/JetBrainsMapleMono-XX-XX-XX-XX.zip|" \
     "$f"
 echo "[update-pkgver] 字体 ${oldver} -> ${latest}"

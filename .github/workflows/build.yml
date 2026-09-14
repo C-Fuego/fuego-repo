@@ -48,6 +48,9 @@ jobs:
         run: |
           docker run --rm -v "$PWD":/work -w /work archlinux:latest \
             bash /work/ci/container-env.sh
+      - name: 恢复工作区属主
+        if: env.NO_CHANGE == 'false'
+        run: sudo chown -R "$(id -u):$(id -g)" "$PWD"
       - name: 提交产物与上游跟踪
         if: env.NO_CHANGE == 'false'
         run: |
