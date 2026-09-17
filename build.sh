@@ -16,9 +16,14 @@ NEEDS_BUILD="${ROOT}/.needs-build"
 
 ALL_PKGS=(enable-3fg-drag grub-btrfs krabby-git clock-rs-git cnmplayer-git
           librime linuxqq-appimage linuxqq-clipsync mbpfan niri-shorin-fork-git
-          osu-lazer-tachyon-bin osu-mime pipes-rs-git rime-frost-git
+          osu-mime osu-lazer-tachyon-bin pipes-rs-git rime-frost-git
           shorin-contrib-git ttf-jetbrains-maple-mono-xx-xx-xx wechat-appimage
           we-layerd-patched-git xclip-git)
+# 注意顺序: 有依赖关系的排前面 (osu-mime 在 osu-lazer-tachyon-bin 之前)
+
+# 这些包的 depends 里有本仓库自己的包, 而构建容器里没配本仓库源, makepkg 会以
+# "target not found" 失败。用 --nodeps 跳过构建期依赖检查（运行时依赖由用户侧 pacman 解析）。
+NODEPS_PKGS=(osu-lazer-tachyon-bin)
 
 # 需要 "先更新 PKGBUILD 到上游最新" 再构建的 always 类包
 #   osu / 字体: 自带轻量 update-pkgver.sh (git ls-remote, sha256=SKIP)
@@ -81,6 +86,8 @@ for pkg in "${build_pkgs[@]}"; do
         # linuxqq-clipsync: 绕过 gitconfig 里失效的代理 insteadOf 规则
         if [[ "$pkg" == "linuxqq-clipsync" ]]; then
             GIT_CONFIG_GLOBAL=/dev/null makepkg -sf --noconfirm
+        elif [[ " ${NODEPS_PKGS[*]} " =~ " ${pkg} " ]]; then
+            makepkg -sf --noconfirm --nodeps
         else
             makepkg -sf --noconfirm
         fi
@@ -93,7 +100,7 @@ for pkg in "${build_pkgs[@]}"; do
         continue
     fi
 
-    # 收集该包的所有 .zst (repo-add --new 会去重旧版本)
+    # 收集该包的所有 .zst (旧版本在下面 prune_old_versions 里清理)
     for zst in "$dir"/*.pkg.tar.zst; do
         [[ -f "$zst" ]] || continue
         cp -f "$zst" "$REPO_DIR/"
@@ -102,9 +109,52 @@ for pkg in "${build_pkgs[@]}"; do
 done
 
 # ── 更新仓库数据库 ──
+# 注意: 不要用 `repo-add --new`。--new 只添加"库里还没有"的包,
+# 于是同版本重打后 db 里的 CSIZE 仍是旧值, pacman 会以
+# "Maximum file size exceeded" 拒绝下载（实测踩过）。正确做法是先清掉旧版本文件, 再普通 repo-add。
+prune_old_versions() {
+    local zst name ver
+    local -A keep_file=() keep_ver=()
+    _pkginfo() { bsdtar -xOf "$1" .PKGINFO 2>/dev/null; }
+    for zst in "$REPO_DIR"/*.pkg.tar.zst; do
+        [[ -f "$zst" ]] || continue
+        read -r name ver < <(_pkginfo "$zst" | awk -F' = ' '
+            /^pkgname/{n=$2} /^pkgver/{v=$2} END{print n, v}')
+        [[ -n "${name:-}" && -n "${ver:-}" ]] || { warn "读不出包信息, 跳过: $(basename "$zst")"; continue; }
+        if [[ -z "${keep_file[$name]:-}" ]]; then
+            keep_file[$name]="$zst"; keep_ver[$name]="$ver"
+        else
+            # 版本更高的留下; 同版本保留文件更新的那个
+            if (( $(vercmp "$ver" "${keep_ver[$name]}") > 0 )) ||
+               { (( $(vercmp "$ver" "${keep_ver[$name]}") == 0 )) && [[ "$zst" -nt "${keep_file[$name]}" ]]; }; then
+                keep_file[$name]="$zst"; keep_ver[$name]="$ver"
+            fi
+        fi
+    done
+    for zst in "$REPO_DIR"/*.pkg.tar.zst; do
+        [[ -f "$zst" ]] || continue
+        read -r name ver < <(_pkginfo "$zst" | awk -F' = ' '
+            /^pkgname/{n=$2} /^pkgver/{v=$2} END{print n, v}')
+        [[ -n "${name:-}" ]] || continue
+        if [[ "${keep_file[$name]}" != "$zst" ]]; then
+            warn "清理旧版本: $(basename "$zst")"
+            rm -f "$zst"
+        fi
+    done
+}
+
 log "更新仓库数据库 (fuego-repo)..."
 cd "$REPO_DIR"
-repo-add --new fuego-repo.db.tar.gz *.pkg.tar.zst
+[[ -f fuego-repo.db.tar.gz ]] || warn "首次建库"
+prune_old_versions
+shopt -s nullglob
+_zsts=( *.pkg.tar.zst )
+shopt -u nullglob
+if (( ${#_zsts[@]} == 0 )); then
+    warn "没有 .zst 产物, 跳过建库"
+else
+    repo-add fuego-repo.db.tar.gz "${_zsts[@]}"
+fi
 
 log "构建完成。产物:"
 ls -lh "$REPO_DIR"/*.pkg.tar.zst 2>/dev/null | awk '{print "  "$5"  "$9}'

@@ -24,6 +24,11 @@ on:
 permissions:
   contents: write
 
+# 同一分支只跑一个构建: 两个 run 同时推 main 会有一个被拒 (non-fast-forward)
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -67,7 +72,17 @@ jobs:
             echo "无产物变更, 跳过提交"
           else
             git commit -m "ci: 自动构建 $(date -u +%Y-%m-%dT%H:%MZ)"
-            git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+            # 并发运行或上一轮 CI 的产物提交都会让远端领先, 推之前先对齐再重试
+            for attempt in 1 2 3; do
+              if git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main; then
+                break
+              fi
+              echo "推送失败 (第 $attempt 次), 拉取远端后 rebase 重试"
+              git fetch --depth=50 origin main
+              git rebase origin/main || { git rebase --abort; echo "rebase 冲突, 放弃"; exit 1; }
+              if (( attempt == 3 )); then exit 1; fi
+              sleep 5
+            done
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
