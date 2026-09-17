@@ -1,9 +1,8 @@
-# 构建产物：pkgbuilds/ 里的 .zst 不跟踪，仅 packages/ 下的入库
+# ── 产物：只有 packages/ 下的 .zst 入库 ──
 packages/fuego-repo/x86_64/*.old
-src/
-pkg/
 *.sig
-pkgbuilds/*/*.pkg.tar.zst
+*.pkg.tar.zst
+*.pkg.tar.xz
 # 上游跟踪状态 (CI 生成)
 .upstream/
 .needs-build
@@ -12,3 +11,23 @@ pkgbuilds/*/.SRCINFO
 **/.gitlab-ci.yml
 **/get_latest.bak
 pkgbuilds/*/.gitignore
+pkgbuilds/*/PKGBUILD.old
+# ── 构建输入 / 中间产物：体积巨大，永不入库 ──
+# makepkg 下载的上游载荷（AppImage / 字体 zip / 源码包 …）
+pkgbuilds/*/*.AppImage
+pkgbuilds/*/*.zip
+pkgbuilds/*/*.tar.gz
+pkgbuilds/*/*.tar.xz
+pkgbuilds/*/*.tar.zst
+pkgbuilds/*/*.tar.bz2
+pkgbuilds/*/*.tgz
+pkgbuilds/*/*.7z
+# makepkg 的 srcdir / pkgdir，以及 AppImage 的解包目录
+src/
+pkg/
+squashfs-root/
+# makepkg 在包目录里留下的上游 git 克隆（如 xclip-git/xclip/、rime-frost-git/rime-frost/）
+# 包目录下只允许放 PKGBUILD 与它直接引用的文件，子目录一律不入库
+pkgbuilds/*/*/
+# 构建日志
+pkgbuilds-*.log

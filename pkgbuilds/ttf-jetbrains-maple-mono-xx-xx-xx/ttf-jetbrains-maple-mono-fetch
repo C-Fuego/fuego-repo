@@ -1,0 +1,49 @@
+#!/bin/bash
+# ttf-jetbrains-maple-mono-xx-xx-xx 的字体下载器
+#
+# 安装/升级后由 .install 的 post_install/post_upgrade 调用；也可以手动执行来修复：
+#   sudo ttf-jetbrains-maple-mono-fetch
+#
+# 字体 zip 约 134MB（解包出 4 个静态 TTF），不随包分发，故首次安装需要联网。
+# 下载地址可用环境变量覆盖（例如走镜像 / 代理）：
+#   sudo TTF_MAPLE_MONO_URL=https://<镜像>/...zip ttf-jetbrains-maple-mono-fetch
+set -euo pipefail
+
+_url='@URL@'
+_sha256='@SHA256@'
+_dest='@DEST@'
+
+_tmp="$(mktemp -d)"
+trap 'rm -rf "$_tmp"' EXIT
+
+_log() { printf '%s\n' "ttf-jetbrains-maple-mono: $*" >&2; }
+
+command -v curl  >/dev/null || { _log "缺少 curl，请先安装 curl"; exit 1; }
+command -v unzip >/dev/null || { _log "缺少 unzip，请先安装 unzip"; exit 1; }
+
+_log "正在下载字体包（约 134MB）…"
+if ! curl -fL --retry 3 --connect-timeout 20 --progress-bar \
+        -o "$_tmp/fonts.zip" "${TTF_MAPLE_MONO_URL:-$_url}"; then
+    _log "下载失败：${TTF_MAPLE_MONO_URL:-$_url}"
+    _log "可手动下载该 zip 后放到任意目录，再重试；或用 TTF_MAPLE_MONO_URL 指向镜像。"
+    exit 1
+fi
+
+if [ -n "$_sha256" ] && \
+   ! printf '%s  %s\n' "$_sha256" "$_tmp/fonts.zip" | sha256sum -c - >/dev/null 2>&1; then
+    _log "警告：下载内容与包内记录的校验和不符，仍继续解包。"
+fi
+
+unzip -oq "$_tmp/fonts.zip" -d "$_tmp/x"
+
+install -dm755 "$_dest"
+_n=0
+while IFS= read -r -d '' _f; do
+    install -Dm644 -t "$_dest" "$_f"
+    _n=$((_n + 1))
+done < <(find "$_tmp/x" -name '*.ttf' -print0)
+[ "$_n" -gt 0 ] || { _log "zip 里没找到 .ttf，放弃"; exit 1; }
+
+fc-cache -f >/dev/null 2>&1 || true
+
+_log "已安装 $_n 个字体到 $_dest"

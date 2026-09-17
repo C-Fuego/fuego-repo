@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# update-pkgver.sh — 检测 Fusion-JetBrainsMapleMono 最新 release tag 并更新本 PKGBUILD (轻量, 不下载)
-# 由 check-upstream.sh 的 always 分支调用。sha256 已设 SKIP, makepkg 构建时会下载真实字体包。
+# update-pkgver.sh — 检测 Fusion-JetBrainsMapleMono 最新 release tag 并更新本 PKGBUILD
+# 由 check-upstream.sh 的 always 分支调用。载荷 zip 不随包分发（安装时由 .install 下载），
+# 所以这里只 bump pkgver/pkgrel：PKGBUILD 里的 source 与下载地址都用 ${pkgver} 推导。
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -24,6 +25,5 @@ fi
 sed -i \
     -e "s|^pkgver=.*|pkgver=${latest}|" \
     -e "s|^pkgrel=.*|pkgrel=1|" \
-    -e "s|JetBrainsMapleMono-XX-XX-XX-\${pkgver}.zip::https://github.com/SpaceTimee/Fusion-JetBrainsMapleMono/releases/download/\${pkgver}/JetBrainsMapleMono-XX-XX-XX.zip|JetBrainsMapleMono-XX-XX-XX-XX-${latest}.zip::https://github.com/SpaceTimee/Fusion-JetBrainsMapleMono/releases/download/${latest}/JetBrainsMapleMono-XX-XX-XX-XX.zip|" \
     "$f"
 echo "[update-pkgver] 字体 ${oldver} -> ${latest}"

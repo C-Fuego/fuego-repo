@@ -1,22 +1,61 @@
 #!/bin/sh
+# wechat-appimage 启动器
+#
+# 包内不携带官方 AppImage（x86_64 约 180MB）。首次运行时下载到用户目录并校验 sha256，
+# 之后直接启动缓存里的那份；包升级（载荷标识变化）时会自动重新下载并清理旧缓存。
+#
+# 环境变量:
+#   WECHAT_APPIMAGE_URL   覆盖下载地址（例如走镜像 / 代理）
+#   WECHAT_APPIMAGE_DIR   覆盖缓存目录（默认 ${XDG_DATA_HOME:-$HOME/.local/share}/wechat-appimage）
+set -eu
 
-case "${XMODIFIERS}" in
+_url='@URL@'
+_sha256='@SHA256@'
+_key='@KEY@'
+_dir="${WECHAT_APPIMAGE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/wechat-appimage}"
+_img="${_dir}/WechatLinux-${_key}.AppImage"
+
+_download() {
+    mkdir -p "$_dir"
+    _tmp="${_img}.part"
+    printf '%s\n' "wechat-appimage: 首次运行，正在下载官方 AppImage（约 180MB）…" >&2
+    if ! curl -fL --retry 3 --connect-timeout 20 --progress-bar \
+            -o "$_tmp" "${WECHAT_APPIMAGE_URL:-$_url}"; then
+        rm -f "$_tmp"
+        printf '%s\n' \
+            "wechat-appimage: 下载失败。可手动下载后放到 $_img，" \
+            "或用 WECHAT_APPIMAGE_URL=镜像地址 重新启动。" >&2
+        exit 1
+    fi
+
+    if [ -n "$_sha256" ] && \
+       ! printf '%s  %s\n' "$_sha256" "$_tmp" | sha256sum -c - >/dev/null 2>&1; then
+        printf '%s\n' \
+            "wechat-appimage: 警告：下载内容与包内记录的校验和不符（上游可能已更新），仍继续启动。" >&2
+    fi
+
+    chmod 755 "$_tmp"
+    mv -f "$_tmp" "$_img"
+
+    # 清掉旧版本缓存，避免用户目录里堆几个 180MB 的文件
+    find "$_dir" -maxdepth 1 -type f -name 'WechatLinux-*.AppImage' \
+        ! -name "$(basename "$_img")" -delete 2>/dev/null || true
+}
+
+[ -x "$_img" ] || _download
+
+# 输入法：KDE/Wayland 下走 fcitx5
+case "${XMODIFIERS:-}" in
     "@im=ibus")
-        : ${QT_IM_MODULE:=ibus}
+        : "${QT_IM_MODULE:=ibus}"
         ;;
     *)
-        : ${QT_IM_MODULE:=fcitx}
+        : "${QT_IM_MODULE:=fcitx}"
         ;;
 esac
 export QT_IM_MODULE
 
-# 以下bug已经在 kde plasma 6.3.90 版本之后修复
-# https://bugs.kde.org/show_bug.cgi?id=469273
-# if [ "${XDG_SESSION_DESKTOP}" = "KDE" ] || [ "${XDG_SESSION_DESKTOP}" = "plasma" ] && [ "${XDG_SESSION_TYPE}" = "wayland" ]; then
-#     XwaylandClientsScale=$(kreadconfig${KDE_SESSION_VERSION} --group KScreen --key XwaylandClientsScale)
-#     [ "${XwaylandClientsScale:-true}" = "true" ] && unset QT_AUTO_SCREEN_SCALE_FACTOR
-# fi
-: ${QT_AUTO_SCREEN_SCALE_FACTOR:=1}
+: "${QT_AUTO_SCREEN_SCALE_FACTOR:=1}"
 export QT_AUTO_SCREEN_SCALE_FACTOR
 
-exec /opt/wechat-appimage/wechat-appimage.AppImage $@
+exec env DESKTOPINTEGRATION=false "$_img" "$@"

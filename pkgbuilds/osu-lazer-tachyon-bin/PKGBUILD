@@ -3,13 +3,19 @@
 # Contributor: Tyler Nelson <neo@cybercat.cc>
 # Contributor: Tuhana GAYRETLİ <tuhana at tuta dot io>
 # Contributor: Quenten Schoonderwoerd <ellie at nicecock dot eu>
+#
+# 瘦身改造（fuego-repo）: 包内不再携带 osu.AppImage（约 290MB），
+# 只装启动器 /usr/bin/osu-lazer + 图标 + desktop 文件。
+# AppImage 在**首次运行时**从上游 release 下载到
+#   ${XDG_DATA_HOME:-$HOME/.local/share}/osu-lazer/
+# 并校验本包构建时记录的 sha256。构建期仍会下载 AppImage（算校验和），该文件不入库。
 
 pkgname=osu-lazer-tachyon-bin
 _pkgname=${pkgname%-bin}
 pkgver=2026.821.0
 _pkgtag=$pkgver-tachyon
-pkgrel=1
-pkgdesc="Tachyon pre-release channel of the future of osu! and the beginning of an open era! Commonly known by the codename osu!lazer. Pew pew."
+pkgrel=2
+pkgdesc="Tachyon pre-release channel of the future of osu! and the beginning of an open era! Commonly known by the codename osu!lazer. Pew pew. (启动器; 首次运行时下载官方 AppImage)"
 arch=(x86_64)
 url="https://osu.ppy.sh"
 license=("MIT" "custom:CC-BY-NC 4.0")
@@ -17,6 +23,7 @@ depends=(
   zlib
   libgl
   fuse2
+  curl
   osu-mime
 )
 provides=(osu-lazer)
@@ -36,13 +43,19 @@ sha256sums=('SKIP'
             '30b914824784b6ba6b30a44b22bea4f3c6fbc10f3f0e74fde5ca76a92ef57244'
             '7e80497273890b3f0729898921d61258138cc29d3d074cd50dd7813c3b083932'
             '44e9e6a85c43086644f427b62d6d8b265c0e2ac1b5091d8ff0c626c58a91836d'
-            'a85170d27209346f5b56752778c7781ce7a25773ccba7c56eb4bf52d85fab8ff')
+            '2513dbc689970f5fd8548ccbaea26024c8d8b29dc2d83bd0f9dfa1341ddf0fd9')
 package() {
   cd "$srcdir"
 
-  # Install binary and launch script
-  install -Dm755 "$_pkgname-$pkgver.AppImage" "$pkgdir/opt/osu-lazer/osu.AppImage"
+  # AppImage 本体不入包；启动器里只写下下载地址 / 校验和 / 版本标识
+  _payload_sha="$(sha256sum "$_pkgname-$pkgver.AppImage" | cut -d' ' -f1)"
+
   install -Dm755 -t "$pkgdir/usr/bin" osu-lazer
+  sed -i \
+    -e "s|@URL@|https://github.com/ppy/osu/releases/download/$_pkgtag/osu.AppImage|" \
+    -e "s|@SHA256@|$_payload_sha|" \
+    -e "s|@PKGVER@|$pkgver|" \
+    "$pkgdir/usr/bin/osu-lazer"
 
   # Install pixmap, desktop and license file
   install -Dm644 icon.png "$pkgdir/usr/share/pixmaps/osu-lazer.png"

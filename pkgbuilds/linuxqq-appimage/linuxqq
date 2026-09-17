@@ -1,0 +1,48 @@
+#!/bin/sh
+# linuxqq-appimage 启动器
+#
+# 包内不携带官方 AppImage（x86_64 约 250MB）。首次运行时下载到用户目录并校验 sha256，
+# 之后直接启动缓存里的那份；包升级（载荷标识变化）时自动重新下载并清理旧缓存。
+# 官方下载地址需要签名，复用 /usr/share/linuxqq-appimage/download.sh（需要 curl + jq）。
+#
+# 环境变量:
+#   LINUXQQ_APPIMAGE_DIR   覆盖缓存目录（默认 ${XDG_DATA_HOME:-$HOME/.local/share}/linuxqq-appimage）
+set -eu
+
+_url='@URL@'
+_sha256='@SHA256@'
+_key='@KEY@'
+_helper="/usr/share/linuxqq-appimage/download.sh"
+_dir="${LINUXQQ_APPIMAGE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/linuxqq-appimage}"
+_img="${_dir}/Linuxqq-${_key}.AppImage"
+
+_download() {
+    mkdir -p "$_dir"
+    _tmp="${_img}.part"
+    printf '%s\n' "linuxqq-appimage: 首次运行，正在下载官方 AppImage（约 250MB）…" >&2
+    if [ ! -x "$_helper" ]; then
+        printf '%s\n' "linuxqq-appimage: 缺少下载助手 $_helper（包是否完整？）" >&2
+        exit 1
+    fi
+    if ! "$_helper" "$_url" -fL --retry 3 --connect-timeout 20 --progress-bar -o "$_tmp"; then
+        rm -f "$_tmp"
+        printf '%s\n' "linuxqq-appimage: 下载失败，请检查网络后重试（或重新安装本包）。" >&2
+        exit 1
+    fi
+
+    if [ -n "$_sha256" ] && \
+       ! printf '%s  %s\n' "$_sha256" "$_tmp" | sha256sum -c - >/dev/null 2>&1; then
+        printf '%s\n' \
+            "linuxqq-appimage: 警告：下载内容与包内记录的校验和不符（上游可能已更新），仍继续启动。" >&2
+    fi
+
+    chmod 755 "$_tmp"
+    mv -f "$_tmp" "$_img"
+
+    find "$_dir" -maxdepth 1 -type f -name 'Linuxqq-*.AppImage' \
+        ! -name "$(basename "$_img")" -delete 2>/dev/null || true
+}
+
+[ -x "$_img" ] || _download
+
+exec env DESKTOPINTEGRATION=false "$_img" "$@"

@@ -1,0 +1,22 @@
+#!/bin/bash
+# pacman scriptlet: 字体的下载/清理都在这里做，因为字体本体（134MB）不随包分发。
+_fetch() {
+    local helper=/usr/bin/ttf-jetbrains-maple-mono-fetch
+    [ -x "$helper" ] || { printf '%s\n' "警告：缺 $helper"; return 0; }
+    "$helper" || printf '%s\n' \
+        "警告：字体下载失败（需要联网）。联网后手动执行: sudo $helper" >&2
+}
+
+post_install() {
+    _fetch
+}
+
+post_upgrade() {
+    _fetch
+}
+
+pre_remove() {
+    # 这些文件是下载器写进去的，pacman 文件库里没有记录，卸载时自己清
+    rm -f /usr/share/fonts/TTF/JetBrainsMapleMono*.ttf
+    fc-cache -f >/dev/null 2>&1 || true
+}

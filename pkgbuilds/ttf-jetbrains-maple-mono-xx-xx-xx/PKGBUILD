@@ -1,19 +1,50 @@
 # Maintainer: pcmid <plzcmid at gmail dot com>
+#
+# 瘦身改造（fuego-repo）: 字体 zip（134MB，解包后 4 个静态 TTF）不入包，
+# 包只装一个下载器 ttf-jetbrains-maple-mono-fetch；安装/升级时由 .install 脚本
+# 调用它把字体下载解包到 /usr/share/fonts/TTF（卸载时由 pre_remove 清理）。
+# 构建期仍会下载 zip 以算 sha256 并取出 LICENSE.txt，该文件不入库（见 .gitignore）。
 
 pkgname=ttf-jetbrains-maple-mono-xx-xx-xx
 pkgver=1.2304.79
-pkgrel=1
-pkgdesc="JetBrains Maple Mono: The free and open-source font fused with JetBrains Mono & Maple Mono"
+pkgrel=2
+pkgdesc="JetBrains Maple Mono: The free and open-source font fused with JetBrains Mono & Maple Mono (字体在安装时下载)"
 arch=(any)
 url="https://github.com/SpaceTimee/Fusion-JetBrainsMapleMono"
 license=(OFL)
 provides=(ttf-jetbrains-maple-mono)
 conflicts=(ttf-jetbrains-maple-mono)
-source=("JetBrainsMapleMono-XX-XX-XX-XX-1.2304.79.zip::https://github.com/SpaceTimee/Fusion-JetBrainsMapleMono/releases/download/1.2304.79/JetBrainsMapleMono-XX-XX-XX-XX.zip")
-sha256sums=('SKIP')
+depends=('curl' 'unzip')
+makedepends=('unzip')
+install="${pkgname}.install"
+_payload_url="https://github.com/SpaceTimee/Fusion-JetBrainsMapleMono/releases/download/${pkgver}/JetBrainsMapleMono-XX-XX-XX-XX.zip"
+_dest="/usr/share/fonts/TTF"
+source=("JetBrainsMapleMono-XX-XX-XX-XX-${pkgver}.zip::${_payload_url}"
+        "ttf-jetbrains-maple-mono-fetch")
+sha256sums=('SKIP'
+            'c989dbffb3180c5a616096fbe982ac31fef9e3be6516f7c09e7ee2a648e32a23')
+
+prepare() {
+    # 只为算载荷校验和（不把 zip 装进包）
+    _payload_sha="$(sha256sum "JetBrainsMapleMono-XX-XX-XX-XX-${pkgver}.zip" | cut -d' ' -f1)"
+    printf '%s\n' "$_payload_sha" > "${srcdir}/payload.sha256"
+
+    # 许可证从 zip 里取（随包分发，这样卸载时能干净移除）
+    unzip -o -j "JetBrainsMapleMono-XX-XX-XX-XX-${pkgver}.zip" 'LICENSE.txt' -d "${srcdir}/license" >/dev/null
+}
 
 package() {
-  find . -type f -name "*.ttf" -exec \
-    install -Dm644 -t "${pkgdir}/usr/share/fonts/TTF" {} \;
-  install -Dm644 LICENSE.txt -t "${pkgdir}/usr/share/licenses/${pkgname}/"
+    _payload_sha="$(cat "${srcdir}/payload.sha256")"
+
+    # 字体下载器（安装时由 scriptlet 调用，也可手动 `sudo ttf-jetbrains-maple-mono-fetch` 修复）
+    install -Dm755 "${srcdir}/ttf-jetbrains-maple-mono-fetch" \
+        "${pkgdir}/usr/bin/ttf-jetbrains-maple-mono-fetch"
+    sed -i \
+        -e "s|@URL@|${_payload_url//&/\\&}|" \
+        -e "s|@SHA256@|${_payload_sha}|" \
+        -e "s|@DEST@|${_dest}|" \
+        "${pkgdir}/usr/bin/ttf-jetbrains-maple-mono-fetch"
+
+    install -Dm644 "${srcdir}/license/LICENSE.txt" \
+        "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.txt"
 }

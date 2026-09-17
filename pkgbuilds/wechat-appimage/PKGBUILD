@@ -1,5 +1,11 @@
 # Based off of: https://daveparrish.net/posts/2019-11-16-Better-AppImage-PKGBUILD-template.html
 # Maintainer: fengcheng <fengcheng@lidig.com>
+#
+# 瘦身改造（fuego-repo）: 包内不再携带官方 AppImage（x86_64 约 180MB / aarch64 约 200MB），
+# 只装启动器 /usr/bin/wechat。AppImage 在**首次运行时**下载到
+#   ${XDG_DATA_HOME:-$HOME/.local/share}/wechat-appimage/
+# 并校验本包构建时记录的 sha256。构建期仍会下载 AppImage 用于取图标/desktop 与算校验和，
+# 该文件不入库（见仓库根 .gitignore）。
 
 _pkgname=wechat
 _Pkgname=WechatLinux
@@ -12,25 +18,27 @@ _last_modified_aarch64=1783692444
 
 pkgname="${_pkgname}"-appimage
 pkgver="${_version}"
-pkgrel=5
-pkgdesc="Wechat for Linux"
+pkgrel=6
+pkgdesc="Wechat for Linux (启动器; 首次运行时下载官方 AppImage)"
 arch=('x86_64' 'aarch64')
 url="https://linux.weixin.qq.com"
 license=('custom')
 options=(!strip !debug)
-depends=('zlib' 'hicolor-icon-theme' 'fuse2' 'xcb-util-renderutil' 'xcb-util-image' 'xcb-util-wm')
+depends=('zlib' 'hicolor-icon-theme' 'fuse2' 'xcb-util-renderutil' 'xcb-util-image' 'xcb-util-wm' 'curl')
 provides=('wechat')
 
 source=("LICENSE" "wechat")
 source_x86_64=("${_Pkgname}-${_last_modified_x86_64}-x86_64.AppImage::${_image_url_x86_64}")
 source_aarch64=("${_Pkgname}-${_last_modified_aarch64}-aarch64.AppImage::${_image_url_aarch64}")
 sha256sums=('4348aee67f0c40bd29ec370fff75e24384907514a76104b43354d395c436f0f2'
-            '7e021be7b7493b32484474e2030e3e0c52cd661959fd69e4b2b284aea4fc6c0b')
+            'd78317b87701743df7d5a27eda009c691b445c00bb395704ce938c79864cb1c2')
 sha256sums_x86_64=('457dba02b91b031cdd4412eee074fbbffb9d9d06b1e50fc1822d34870e114990')
 sha256sums_aarch64=('44b1e169cdf0492d42f6bc771ac034ed3a75133c527f62cb04cc8fb6b1029d46')
 
 _last_modified=$(eval echo \${_last_modified_${CARCH}})
 _appimage="${_Pkgname}-${_last_modified}-${CARCH}.AppImage"
+_url_ref="_image_url_${CARCH}"
+_image_url="${!_url_ref}"
 noextract=(
     ${source_x86_64}
     ${source_aarch64}
@@ -51,9 +59,15 @@ build() {
 }
 
 package() {
-    # AppImage
-    install -Dm755 "${srcdir}/${_appimage}" "${pkgdir}/opt/${pkgname}/${pkgname}.AppImage"
-    install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/opt/${pkgname}/LICENSE"
+    # AppImage 本体不入包；只把启动器需要的元数据（下载地址 + 校验和 + 载荷标识）写进启动器
+    _payload_sha="$(sha256sum "${srcdir}/${_appimage}" | cut -d' ' -f1)"
+
+    install -Dm755 "${srcdir}/wechat" "${pkgdir}/usr/bin/${_pkgname}"
+    sed -i \
+        -e "s|@URL@|${_image_url//&/\\&}|" \
+        -e "s|@SHA256@|${_payload_sha}|" \
+        -e "s|@KEY@|${_last_modified}-${CARCH}|" \
+        "${pkgdir}/usr/bin/${_pkgname}"
 
     # Desktop file
     install -Dm644 "${srcdir}/squashfs-root/${_disname}.desktop"\
@@ -63,11 +77,6 @@ package() {
     install -dm755 "${pkgdir}/usr/share/"
     install -Dm644 "${srcdir}/squashfs-root/${_disname}.png" "${pkgdir}/usr/share/icons/${_pkgname}.png"
 
-    # Symlink executable
-    install -dm755 "${pkgdir}/usr/bin"
-    install -Dm755 "${srcdir}/wechat" "${pkgdir}/usr/bin/${_pkgname}"
-
-    # Symlink license
-    install -dm755 "${pkgdir}/usr/share/licenses/${pkgname}/"
-    ln -s "/opt/$pkgname/LICENSE" "$pkgdir/usr/share/licenses/$pkgname"
+    # License（上游 LICENSE 随包分发）
+    install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }

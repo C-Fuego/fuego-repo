@@ -1,2 +1,49 @@
 #!/bin/sh
-env APPIMAGELAUNCHER_DISABLE=1 OSU_EXTERNAL_UPDATE_PROVIDER=1 OSU_EXTERNAL_UPDATE_STREAM=tachyon /opt/osu-lazer/osu.AppImage "$@"
+# osu-lazer-tachyon-bin 启动器
+#
+# 包内不携带 osu.AppImage（约 290MB）。首次运行时从上游 release 下载到用户目录并校验 sha256，
+# 之后直接启动缓存里的那份；包升级（版本变化）时自动重新下载并清理旧缓存。
+#
+# 国内下载 GitHub release 慢的话，可以走镜像：
+#   OSU_LAZER_APPIMAGE_URL=https://<gh 代理>/https://github.com/ppy/osu/releases/download/<tag>/osu.AppImage osu-lazer
+# 环境变量:
+#   OSU_LAZER_APPIMAGE_URL   覆盖下载地址
+#   OSU_LAZER_APPIMAGE_DIR   覆盖缓存目录（默认 ${XDG_DATA_HOME:-$HOME/.local/share}/osu-lazer）
+set -eu
+
+_url='@URL@'
+_sha256='@SHA256@'
+_pkgver='@PKGVER@'
+_dir="${OSU_LAZER_APPIMAGE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/osu-lazer}"
+_img="${_dir}/osu-${_pkgver}.AppImage"
+
+_download() {
+    mkdir -p "$_dir"
+    _tmp="${_img}.part"
+    printf '%s\n' "osu-lazer: 首次运行，正在下载官方 AppImage（约 290MB）…" >&2
+    if ! curl -fL --retry 3 --connect-timeout 20 --progress-bar \
+            -o "$_tmp" "${OSU_LAZER_APPIMAGE_URL:-$_url}"; then
+        rm -f "$_tmp"
+        printf '%s\n' \
+            "osu-lazer: 下载失败。可手动下载后放到 $_img，" \
+            "或用 OSU_LAZER_APPIMAGE_URL=镜像地址 重新启动。" >&2
+        exit 1
+    fi
+
+    if [ -n "$_sha256" ] && \
+       ! printf '%s  %s\n' "$_sha256" "$_tmp" | sha256sum -c - >/dev/null 2>&1; then
+        printf '%s\n' \
+            "osu-lazer: 警告：下载内容与包内记录的校验和不符，仍继续启动。" >&2
+    fi
+
+    chmod 755 "$_tmp"
+    mv -f "$_tmp" "$_img"
+
+    find "$_dir" -maxdepth 1 -type f -name 'osu-*.AppImage' \
+        ! -name "$(basename "$_img")" -delete 2>/dev/null || true
+}
+
+[ -x "$_img" ] || _download
+
+exec env APPIMAGELAUNCHER_DISABLE=1 OSU_EXTERNAL_UPDATE_PROVIDER=1 \
+    OSU_EXTERNAL_UPDATE_STREAM=tachyon "$_img" "$@"
