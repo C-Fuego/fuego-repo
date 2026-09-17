@@ -41,3 +41,22 @@ if (( ${#big[@]} > 0 )); then
 fi
 
 printf '体积守门通过: 暂存 %d 个文件, 合计 %s\n' "${#staged[@]}" "$(numfmt --to=iec "$total")"
+
+# ── 产物误忽略检查 ──
+# 踩过的坑: .gitignore 里写了全局 *.pkg.tar.zst, 于是 packages/ 下要发布的产物被静默忽略,
+# 提交里只剩 db, 看起来"推送成功"其实什么都没发布。这里主动发现。
+missing=0
+if [[ -d packages ]]; then
+    while IFS= read -r -d '' z; do
+        if git check-ignore -q -- "$z"; then
+            echo "::error::$z 被 .gitignore 忽略, 不会随包发布"
+            missing=1
+        elif ! git ls-files --error-unmatch -- "$z" >/dev/null 2>&1; then
+            echo "::warning::$z 存在但没有被暂存(既不在仓库也没进本次提交)"
+        fi
+    done < <(find packages -name '*.pkg.tar.zst' -print0)
+fi
+if (( missing )); then
+    echo "修复 .gitignore（只能限定 pkgbuilds/ 里忽略 .zst, 别用全局通配）后重跑。"
+    exit 1
+fi

@@ -1,8 +1,10 @@
 # ── 产物：只有 packages/ 下的 .zst 入库 ──
 packages/fuego-repo/x86_64/*.old
 *.sig
-*.pkg.tar.zst
-*.pkg.tar.xz
+# 注意: 不要写全局 *.pkg.tar.zst —— 那会把 packages/ 下要发布的产物一起忽略掉,
+#       只能限定在 pkgbuilds/ 里（makepkg 会把产物丢在包目录）
+pkgbuilds/*/*.pkg.tar.zst
+pkgbuilds/*/*.pkg.tar.xz
 # 上游跟踪状态 (CI 生成)
 .upstream/
 .needs-build
