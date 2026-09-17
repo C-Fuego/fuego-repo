@@ -2,7 +2,7 @@
 
 _pkgname=clock-rs
 pkgname="$_pkgname-git"
-pkgver=r102.g76b94cb
+pkgver=r117.g2b37402
 pkgrel=1
 pkgdesc="A clock for your terminal! (git version)"
 arch=(any)
