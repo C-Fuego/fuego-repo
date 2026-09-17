@@ -10,7 +10,7 @@ GitHub (C-Fuego/fuego-repo)
   ├── check-upstream.sh     # cron 轮询上游, 输出 .needs-build
   ├── build.sh              # 读 .needs-build/--all/指定包, makepkg 构建 + repo-add
   ├── ci/cargo-config.toml  # Rust 性能优化 (target-cpu=x86-64-v3 + release lto=fat)
-  ├── ci/check-size.sh      # 推送前体积守门 (>100MiB 拒绝提交, 避免撞 GitHub 硬上限)
+  ├── ci/check-size.sh      # 推送前守门: >100MiB 拒绝 + 产物误忽略检查 + db CSIZE 一致性检查
   └── .github/workflows/build.yml
         │  cron 每天 03:17 UTC / push pkgbuilds/** / workflow_dispatch
         ▼

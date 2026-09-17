@@ -60,3 +60,28 @@ if (( missing )); then
     echo "修复 .gitignore（只能限定 pkgbuilds/ 里忽略 .zst, 别用全局通配）后重跑。"
     exit 1
 fi
+
+# ── db 一致性检查 ──
+# 踩过的坑: `repo-add --new` 不会刷新已存在条目的 CSIZE, 同版本重打后 db 里的 CSIZE
+# 小于实际文件, pacman 直接以 "Maximum file size exceeded" 拒绝下载。这里兜一层。
+# （需要 tar 支持 --zstd；不支持就跳过并告警）
+DB=packages/fuego-repo/x86_64/fuego-repo.db.tar.gz
+if [[ -f $DB ]] && tar --zstd -tf "$DB" >/dev/null 2>&1; then
+    db_bad=0; db_n=0
+    while IFS= read -r entry; do
+        info=$(tar --zstd -xOf "$DB" "$entry" 2>/dev/null) || continue
+        name=$(awk '/^%NAME%$/{getline;print;exit}'  <<<"$info")
+        csize=$(awk '/^%CSIZE%$/{getline;print;exit}' <<<"$info")
+        fname=$(awk '/^%FILENAME%$/{getline;print;exit}' <<<"$info")
+        real=$(stat -c%s "packages/fuego-repo/x86_64/$fname" 2>/dev/null || echo -1)
+        db_n=$((db_n + 1))
+        if [[ "$real" != "$csize" ]]; then
+            echo "::error::db 里 $name 的 CSIZE=$csize, 实际文件=$real —— 不一致时 pacman 会拒绝下载 (\"Maximum file size exceeded\")"
+            db_bad=$((db_bad + 1))
+        fi
+    done < <(tar --zstd -tf "$DB" 2>/dev/null | grep -v '/$')
+    echo "db 一致性检查: $db_n 个条目, $db_bad 个不一致"
+    (( db_bad == 0 )) || exit 1
+elif [[ -f $DB ]]; then
+    echo "::warning::tar 不支持 --zstd, 跳过 db 一致性检查"
+fi
