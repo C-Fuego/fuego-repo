@@ -1,7 +1,7 @@
 pkgname=we-layerd-patched-git
 _gitname=we-layerd
 pkgver=0.2.8.r100.g30d3417
-pkgrel=1
+pkgrel=2
 pkgdesc='Wayland daemon and GUI for running Wallpaper Engine wallpapers through wallpaper-engine-renderer (with we-gui tray-only startup & daemon shutdown fixes)'
 arch=('x86_64')
 url='https://github.com/Aromatic05/we-layerd'
@@ -99,6 +99,8 @@ else:
 "
 
   export CARGO_HOME="${srcdir}/cargo-home"
+  # 私有 CARGO_HOME 目录要先建, 否则下面的 cat > 会失败
+  install -d "${CARGO_HOME}"
   # 性能优化 (target-cpu=x86-64-v3, opt-level=3, lto=thin), 取自用户 ~/.cargo/config.toml 优化部分
   cat > "${CARGO_HOME}/config.toml" <<'CARGOEOF'
 [env]

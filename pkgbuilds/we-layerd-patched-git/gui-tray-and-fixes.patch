@@ -1,31 +1,5 @@
-From 31da10abbf370b11410f865674f76a77b4cc4ed7 Mon Sep 17 00:00:00 2001
-From: C-Fuego <fuego@localhost>
-Date: Mon, 24 Aug 2026 17:56:51 +0800
-Subject: [PATCH] feat(gui): tray-only startup, single-instance guard, safe
- daemon shutdown
-
-- add CLI options: --hidden, -h/--help, -V/--version
-- add start_hidden preference persisted in ~/.config/we-layerd/gui.toml
-- start without opening the main window when hidden is requested; the
-  window can be reopened from the tray menu at any time
-- guard against multiple GUI instances via an XDG runtime socket; a
-  second launch asks the running instance to show its window
-- only stop the we-layerd daemon on exit when this GUI process spawned
-  it, leaving independently started daemons untouched
----
- apps/we-gui/src/app/init.rs                 |  19 +--
- apps/we-gui/src/app/mod.rs                  | 113 +++++++++++++++-
- apps/we-gui/src/app/state.rs                |  11 +-
- apps/we-gui/src/app/update.rs               |  22 +++-
- apps/we-gui/src/main.rs                     |  99 +++++++++++++-
- apps/we-gui/src/platform/mod.rs             |   1 +
- apps/we-gui/src/platform/single_instance.rs | 135 ++++++++++++++++++++
- apps/we-gui/src/services/preferences.rs     |   8 ++
- 8 files changed, 387 insertions(+), 21 deletions(-)
- create mode 100644 apps/we-gui/src/platform/single_instance.rs
-
 diff --git a/apps/we-gui/src/app/init.rs b/apps/we-gui/src/app/init.rs
-index ada6e15..919a296 100644
+index c4fac89..449782d 100644
 --- a/apps/we-gui/src/app/init.rs
 +++ b/apps/we-gui/src/app/init.rs
 @@ -21,7 +21,7 @@ use crate::{
@@ -47,7 +21,7 @@ index ada6e15..919a296 100644
              entries: Vec::new(),
              selected_id: None,
              selected_schema: UserPropertySchema { entries: Vec::new() },
-@@ -152,13 +151,17 @@ pub(crate) fn initialize() -> (App, Task<Message>) {
+@@ -155,17 +154,24 @@ pub(crate) fn initialize() -> (App, Task<Message>) {
                  include_web: preferences.shuffle_include_web,
              },
              playlist_migration_completed: preferences.playlist_migration_completed,
@@ -58,10 +32,17 @@ index ada6e15..919a296 100644
 +        let mut startup_tasks = vec![
              Task::done(Message::AutoScan),
              Task::perform(crate::services::runtime::fetch_outputs(), Message::OutputsLoaded),
+             Task::perform(
+                 async { crate::services::autostart::is_enabled() },
+                 Message::AutostartStatusLoaded,
+             ),
 -            window::open(window::Settings::default()).1.map(Message::WindowOpened),
 -        ]),
 -    )
 +        ];
++        // Tray-only startup: with `--hidden` (or `start_hidden = true` in
++        // gui.toml) the main window is not opened; it can be reopened later
++        // from the tray menu ("Show Window").
 +        if !(start_hidden || preferences.start_hidden) {
 +            startup_tasks
 +                .push(window::open(window::Settings::default()).1.map(Message::WindowOpened));
@@ -71,7 +52,7 @@ index ada6e15..919a296 100644
  
  pub(crate) fn detect_system_theme() -> Theme {
 diff --git a/apps/we-gui/src/app/mod.rs b/apps/we-gui/src/app/mod.rs
-index 37d3ba6..fc9878e 100644
+index d7f8943..357c1ee 100644
 --- a/apps/we-gui/src/app/mod.rs
 +++ b/apps/we-gui/src/app/mod.rs
 @@ -7,9 +7,9 @@ mod subscription;
@@ -86,7 +67,7 @@ index 37d3ba6..fc9878e 100644
          .title("we-gui")
          .theme(|app: &App, _window| app.theme.clone())
          .subscription(subscription::subscription)
-@@ -167,6 +167,7 @@ mod tests {
+@@ -170,6 +170,7 @@ mod tests {
              profile_name_input: String::new(),
              legacy_shuffle: legacy_shuffle(),
              playlist_migration_completed: true,
@@ -94,16 +75,7 @@ index 37d3ba6..fc9878e 100644
          };
  
          let _task =
-@@ -197,7 +198,7 @@ mod tests {
- 
-     #[cfg(unix)]
-     #[test]
--    fn dropping_gui_stops_layerd() {
-+    fn dropping_gui_leaves_unowned_daemon_running() {
-         let _lock = ENV_LOCK.lock().expect("environment lock");
-         let suffix = SystemTime::now().duration_since(UNIX_EPOCH).expect("system clock").as_nanos();
-         let temp = std::env::temp_dir().join(format!("we-gui-exit-{suffix}"));
-@@ -271,6 +272,107 @@ mod tests {
+@@ -277,6 +278,110 @@ mod tests {
              profile_name_input: String::new(),
              legacy_shuffle: legacy_shuffle(),
              playlist_migration_completed: true,
@@ -192,6 +164,9 @@ index 37d3ba6..fc9878e 100644
 +            running_source: None,
 +            language: Language::English,
 +            preferences_path: None,
++            autostart_enabled: false,
++            autostart_pending: true,
++            autostart_error: None,
 +            runtime_status: RuntimeStatus::DaemonNotRunning,
 +            preferences_generation: 0,
 +            playlist_selected: None,
@@ -211,23 +186,11 @@ index 37d3ba6..fc9878e 100644
          };
          drop(app);
  
-@@ -284,7 +386,10 @@ mod tests {
-         }
- 
-         let commands = fs::read_to_string(&log).expect("read fake command log");
--        assert!(commands.lines().any(|line| line == "ctl stop"));
-+        assert!(
-+            commands.lines().any(|line| line == "ctl stop"),
-+            "a daemon spawned by the GUI must be stopped when the GUI exits"
-+        );
-         fs::remove_dir_all(temp).expect("remove test directory");
-     }
- 
 diff --git a/apps/we-gui/src/app/state.rs b/apps/we-gui/src/app/state.rs
-index d15c9d1..d01cbc8 100644
+index 66bdf2a..0da556a 100644
 --- a/apps/we-gui/src/app/state.rs
 +++ b/apps/we-gui/src/app/state.rs
-@@ -79,6 +79,8 @@ pub(crate) struct App {
+@@ -82,6 +82,8 @@ pub(crate) struct App {
      pub profile_name_input: String,
      pub legacy_shuffle: LegacyShuffleMigration,
      pub playlist_migration_completed: bool,
@@ -236,7 +199,7 @@ index d15c9d1..d01cbc8 100644
  }
  
  #[derive(Debug, Clone, Default, PartialEq, Eq)]
-@@ -116,7 +118,14 @@ impl App {
+@@ -119,7 +121,14 @@ impl App {
              return true;
          }
          self.runtime_shutdown = true;
@@ -253,10 +216,10 @@ index d15c9d1..d01cbc8 100644
          stopped
      }
 diff --git a/apps/we-gui/src/app/update.rs b/apps/we-gui/src/app/update.rs
-index 6679c70..1380652 100644
+index 4e62713..d8ddc56 100644
 --- a/apps/we-gui/src/app/update.rs
 +++ b/apps/we-gui/src/app/update.rs
-@@ -736,6 +736,9 @@ pub(crate) fn update(app: &mut App, message: Message) -> Task<Message> {
+@@ -778,6 +778,9 @@ pub(crate) fn update(app: &mut App, message: Message) -> Task<Message> {
              if super::signal::take_shutdown_request() {
                  return Task::done(Message::ExitRequested);
              }
@@ -266,7 +229,7 @@ index 6679c70..1380652 100644
              if let Some(tray) = app.tray.as_mut() {
                  if let Some(action) = tray.poll_action() {
                      return Task::done(Message::TrayAction(action));
-@@ -749,13 +752,7 @@ pub(crate) fn update(app: &mut App, message: Message) -> Task<Message> {
+@@ -791,13 +794,7 @@ pub(crate) fn update(app: &mut App, message: Message) -> Task<Message> {
          }
          Message::ExitRequested => exit_application(app),
          Message::TrayAction(action) => match action {
@@ -281,7 +244,7 @@ index 6679c70..1380652 100644
              tray::TrayAction::PlaySwitch => Task::done(Message::PlayPressed),
              tray::TrayAction::NextPlaylistItem => Task::done(Message::PlaylistNext),
              tray::TrayAction::Stop => Task::done(Message::StopPressed),
-@@ -784,6 +781,16 @@ fn exit_application(app: &mut App) -> Task<Message> {
+@@ -826,6 +823,16 @@ fn exit_application(app: &mut App) -> Task<Message> {
      iced::exit()
  }
  
@@ -298,7 +261,7 @@ index 6679c70..1380652 100644
  fn queue_library_scan(app: &mut App, workshop_path: String) -> Task<Message> {
      match app.library_scan.request(workshop_path) {
          Some(request) => start_library_scan(request),
-@@ -964,6 +971,7 @@ fn persist_gui_preferences(app: &App) -> Task<Message> {
+@@ -1006,6 +1013,7 @@ fn persist_gui_preferences(app: &App) -> Task<Message> {
          shuffle_include_scene: app.legacy_shuffle.include_scene,
          shuffle_include_web: app.legacy_shuffle.include_web,
          playlist_migration_completed: app.playlist_migration_completed,
@@ -635,6 +598,3 @@ index 1ac29e6..095756f 100644
              )
          );
          assert!(fs::read_dir(path.parent().expect("preferences parent"))
--- 
-2.55.0
-

@@ -41,6 +41,9 @@ pkgver() {
 prepare() {
   cd "${_pkgname}"
   export CARGO_HOME="${srcdir}/${_pkgname}/.cargo"
+  # 上游仓库里没有 .cargo 目录, 必须先建, 否则下面的 cat > 会以
+  # "No such file or directory" 失败
+  install -d "${CARGO_HOME}"
   # 性能优化强制全开 (target-cpu=x86-64-v3, opt-level=3, lto=thin, strip=true, panic=abort)
   cat > "${CARGO_HOME}/config.toml" <<'CARGOEOF'
 [env]
