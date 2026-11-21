@@ -131,7 +131,7 @@ tag、资产状态与 GitHub 计算的 sha256 digest，有新版时同时更新 
 
 ```bash
 git clone --single-branch --branch main \
-  https://github.com/C-Fuego/pkgbuild.git \
+  https://github.com/C-Fuego/fuego-repo.git \
   ~/pkgbuild-source
 cd ~/pkgbuild-source
 ```

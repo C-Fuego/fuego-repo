@@ -48,7 +48,7 @@ cd ~/pkgbuild-source
 可以通过环境变量调整默认配置：
 
 ```bash
-PKGBUILD_GITHUB_REPOSITORY=emoeem/pkgbuild
+PKGBUILD_GITHUB_REPOSITORY=C-Fuego/fuego-repo
 PKGBUILD_PACMAN_REPOSITORY=emoeem
 PKGBUILD_DEFAULT_MAKE_JOBS=2
 ```

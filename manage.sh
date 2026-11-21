@@ -8,7 +8,7 @@ repo_root="$(
 )"
 readonly repo_root
 
-github_repository="${PKGBUILD_GITHUB_REPOSITORY:-C-Fuego/pkgbuild}"
+github_repository="${PKGBUILD_GITHUB_REPOSITORY:-C-Fuego/fuego-repo}"
 pacman_repository="${PKGBUILD_PACMAN_REPOSITORY:-fuego-repo}"
 default_make_jobs="${PKGBUILD_DEFAULT_MAKE_JOBS:-2}"
 
