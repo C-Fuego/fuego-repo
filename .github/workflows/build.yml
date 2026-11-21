@@ -854,6 +854,34 @@ jobs:
             printf '%s\n' "$REPOSITORY_PRIVATE_KEY" > repository-key.asc
           fi
 
+      - name: Check the repository URL is configured
+        shell: bash
+        env:
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -Eeuo pipefail
+          # The URL is written into the database's .conf, which is what clients
+          # copy into pacman.conf. Publishing without it would leave a
+          # repository nobody can point pacman at, while every step reports
+          # success -- and the next run would find that database in the bucket
+          # and adopt it as the published state. Fail here, before the upload.
+          missing=()
+          [[ -n "${R2_BUCKET:-}" ]] || missing+=(R2_BUCKET)
+          [[ -n "${R2_PUBLIC_URL:-}" ]] || missing+=(R2_PUBLIC_URL)
+          [[ -n "${R2_ENDPOINT:-}" ]] || missing+=(R2_ENDPOINT)
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Repository variables/secrets not configured: %s\n' "${missing[*]}"
+            printf 'Set them in Settings > Secrets and variables > Actions.\n' >&2
+            printf 'R2_PUBLIC_URL must be the URL clients use, e.g. https://ignacio.dpdns.org/x86_64\n' >&2
+            exit 1
+          fi
+          case "$R2_PUBLIC_URL" in
+            https://*) ;;
+            *) printf '::error::R2_PUBLIC_URL must start with https://\n'; exit 1 ;;
+          esac
+
       - name: Fetch current repository state
         shell: bash
         env:
@@ -909,7 +937,7 @@ jobs:
             --volume "$GITHUB_WORKSPACE/repository-key.asc:/run/secrets/repository-key.asc:ro" \
             --volume "$GITHUB_WORKSPACE/repository-passphrase:/run/secrets/repository-passphrase:ro" \
             --env "REPOSITORY_NAME=${REPOSITORY_NAME}" \
-            --env "REPOSITORY_SERVER=${R2_PUBLIC_URL:-https://example.invalid/configure-R2_PUBLIC_URL}/${R2_PREFIX}" \
+            --env "REPOSITORY_SERVER=${R2_PUBLIC_URL:?R2_PUBLIC_URL is required}/${R2_PREFIX}" \
             --env "REPOSITORY_KEY_PASSPHRASE_FILE=/run/secrets/repository-passphrase" \
             "$BUILDER_IMAGE" \
             bash /workspace/scripts/create-repository.sh

@@ -41,9 +41,12 @@
 set -Eeuo pipefail
 
 for variable in REPOSITORY_DIR REPOSITORY_NAME R2_BUCKET R2_ENDPOINT \
-    R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+    R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_PUBLIC_URL; do
     if [[ -z "${!variable:-}" ]]; then
         printf 'Missing required environment variable: %s\n' "$variable" >&2
+        if [[ "$variable" == R2_PUBLIC_URL ]]; then
+            printf 'It is the URL clients use; without it the database .conf points nowhere.\n' >&2
+        fi
         exit 2
     fi
 done
@@ -237,7 +240,10 @@ if ! cmp -s "${verify_dir}/${repository_name}.db" "${repository_name}.db"; then
     exit 1
 fi
 
-server_url="${R2_PUBLIC_URL:-${endpoint}/${bucket}/${prefix}}"
+# No fallback to the S3 endpoint: that URL is not public, so a .conf built
+# from it would look valid here and fail for every client. README carries the
+# value and the workflow checks it before anything is uploaded.
+server_url="${R2_PUBLIC_URL%/}"
 package_count="${#payload[@]}"
 updated_at="$(date -u '+%Y-%m-%d %H:%M UTC')"
 

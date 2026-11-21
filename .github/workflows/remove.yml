@@ -203,6 +203,19 @@ jobs:
             "$BUILDER_IMAGE" \
             bash -c 'bash /workspace/scripts/verify-repository.sh /repository'
 
+      - name: Check the repository URL is configured
+        if: steps.removals.outputs.changed == 'true'
+        shell: bash
+        env:
+          R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
+        run: |
+          set -Eeuo pipefail
+          # Same reason as build.yml: the URL is baked into the .conf that
+          # clients read, so a removal must not republish without it.
+          if [[ -z "${R2_PUBLIC_URL:-}" ]]; then
+            printf '::error::R2_PUBLIC_URL is not configured; refusing to republish the repository.\n'
+            exit 1
+          fi
       - name: Publish repository to R2
         if: steps.removals.outputs.changed == 'true'
         shell: bash
