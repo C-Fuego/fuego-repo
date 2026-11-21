@@ -62,21 +62,35 @@ command -v aws >/dev/null 2>&1 || {
 # The listing is the existence proof described in the header. `aws s3 ls`
 # exits 0 and prints nothing for an empty prefix, and non-zero when the
 # credentials or the network are wrong.
-listing=""
+# Diagnostics are captured to files rather than to a variable: a command
+# substitution that only holds stdout is how a real CLI error turns into a
+# blank "failed (attempt 1):" line with no explanation, which is exactly the
+# state that made the first R2 publish impossible to debug.
+listing_file="$(mktemp)"
+error_file="$(mktemp)"
+trap 'rm -f "$listing_file" "$error_file"' EXIT
 for attempt in 1 2 3; do
-    # `timeout` runs a program, not a shell function: expand the wrapper here
-    # so the 120s guard really applies to the CLI, not to a failed exec.
-    if listing="$(timeout 120 aws --endpoint-url "${endpoint%/}" s3 ls "s3://${bucket}/${prefix}/" 2>&1)"; then
+    # `timeout` runs a program, not a shell function: the full command is
+    # expanded here so the 120s guard really applies to the CLI.
+    if timeout 120 aws --endpoint-url "${endpoint%/}" s3 ls \
+        "s3://${bucket}/${prefix}/" >"$listing_file" 2>"$error_file"; then
         break
     fi
-    printf 'Listing s3://%s/%s/ failed (attempt %d):\n%s\n' \
-        "$bucket" "$prefix" "$attempt" "$listing" >&2
+    printf 'Listing s3://%s/%s/ failed (attempt %d):\n' \
+        "$bucket" "$prefix" "$attempt" >&2
+    if [[ -s "$error_file" ]]; then
+        sed 's/^/  /' "$error_file" >&2
+    else
+        printf '  (the AWS CLI exited without writing an error; check credentials, bucket, and endpoint)\n' >&2
+    fi
     if (( attempt == 3 )); then
         printf 'Cannot establish whether the published repository exists; refusing to start from empty.\n' >&2
         exit 1
     fi
     sleep $(( attempt * 5 ))
 done
+
+listing="$(cat "$listing_file")"
 
 if [[ -z "$listing" ]]; then
     printf 's3://%s/%s/ is empty; first publish starts with an empty repository.\n' \
