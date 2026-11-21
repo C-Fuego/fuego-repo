@@ -62,26 +62,42 @@ jobs:
       - name: Fetch current repository state
         id: state
         env:
-          GH_TOKEN: ${{ github.token }}
+          R2_PREFIX: x86_64
+          REPOSITORY_NAME: fuego-repo
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           set -Eeuo pipefail
+          export AWS_ENDPOINT_URL_S3="${R2_ENDPOINT%/}"
+          export AWS_DEFAULT_REGION=auto
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
           mkdir -p published/x86_64
           rm -f published/x86_64/*.pkg.tar.zst published/x86_64/*.db* published/x86_64/*.files*
-          if ! gh release view repo --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            # 首次发布前的自举状态：没有可观察的仓库不算失败，否则这个
-            # workflow 在第一次 publish 前会永远红着。
-            printf 'Release repo does not exist yet; nothing to watch until the first publish.\n' >> "$GITHUB_STEP_SUMMARY"
+          # 首次发布前的自举状态：R2 未配置或桶内还没有数据库时，没有可观察
+          # 的仓库不算失败，否则这个 workflow 在第一次 publish 前会永远红着。
+          # "读不到" 与 "确实是空的" 必须分开：列举失败是错误，不是空桶。
+          if [[ -z "${R2_BUCKET:-}" || -z "${R2_ENDPOINT:-}" ]]; then
+            printf 'R2 is not configured; nothing to watch until the first publish.\n' >> "$GITHUB_STEP_SUMMARY"
+            printf 'count=0\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          listing="$(aws s3 ls "s3://${R2_BUCKET}/${R2_PREFIX}/")" || {
+            printf '::error::Cannot list s3://%s/%s/; refusing to report "no drift".\n' "$R2_BUCKET" "$R2_PREFIX"
+            exit 1
+          }
+          if ! grep -qE "[[:space:]]${REPOSITORY_NAME}\.db([[:space:]]|$)" <<< "$listing"; then
+            printf 'No published database in R2 yet; nothing to watch until the first publish.\n' >> "$GITHUB_STEP_SUMMARY"
             printf 'count=0\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # 数据库文件必须和包一起下载：两个检测器都会把 published 目录注册进
           # pacman.conf（soname 检测用原目录、version 检测用其副本），没有
-          # emoeem.db 时 pacman -Sy 同步本地仓库会直接失败，把整个 watch 变红。
-          gh release download repo --repo "$GITHUB_REPOSITORY" \
-            --pattern '*.pkg.tar.zst' \
-            --pattern '*.db' --pattern '*.db.sig' \
-            --pattern '*.files' --pattern '*.files.sig' \
-            --dir published/x86_64 --clobber
+          # fuego-repo.db 时 pacman -Sy 同步本地仓库会直接失败，把整个 watch 变红。
+          aws s3 cp --only-show-errors --no-progress --recursive \
+            "s3://${R2_BUCKET}/${R2_PREFIX}/" published/x86_64/
           count="$(find published/x86_64 -maxdepth 1 -name '*.pkg.tar.zst' | wc -l)"
           printf 'Published packages downloaded: %s\n' "$count"
           printf 'count=%s\n' "$count" >> "$GITHUB_OUTPUT"

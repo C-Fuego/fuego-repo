@@ -52,6 +52,7 @@ cd "$root"
 # broken package metadata before anything compiles a fixture or shells out.
 checks=(
     "package-manifest-policy"
+    "hub-declarations"
     "package-manifest-tests"
     "package-count"
     "select-packages"
@@ -84,6 +85,16 @@ run_check() {
             ;;
         package-manifest-tests)
             python3 tests/test_package_manifests.py
+            ;;
+        hub-declarations)
+            # scripts/hub/ reads every package's metadata on its own, and the
+            # scripts it is meant to replace keep reading it their own way.
+            # Two readings that disagree are worse than either one alone: one
+            # consumer acts on a description the other has already left
+            # behind. This proves they agree on every package, so the hub can
+            # be adopted piece by piece instead of as a risky all-at-once
+            # rewrite. It is a comparison, so it stays cheap and read-only.
+            python3 scripts/hub/validate.py
             ;;
         package-count)
             bash scripts/count-packages.sh

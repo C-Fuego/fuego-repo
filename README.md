@@ -3,7 +3,7 @@
 这个项目把 `packages/*/PKGBUILD` 自动构建成 Arch Linux `x86_64`
 软件包，并在私有 `repo` 分支维护标准 pacman 仓库数据库。
 
-当前维护 15 个 package base。
+当前维护 16 个 package base。
 
 ## Features
 
@@ -30,21 +30,22 @@
 
 | Package | Arch | 说明 |
 | --- | --- | --- |
+| `dsh-desktop-linux` | `x86_64` | DeepSeek Harness 桌面版（上游 ffyfox 的 Electron 壳 + 内嵌 dsh 运行时）；直接重新打包上游 CI 产出的 Arch 安装包，安装到 `/opt/deepseek-harness-desktop` |
 | `ffmpeg-full` | `x86_64` | 启用大量编解码器、CUDA 和 Whisper 支持的 FFmpeg |
 | `linuxqq-wayland-fix-git` | `x86_64` | 修复 Linux QQ 在 Wayland 下的屏幕共享、声音共享、剪贴板和截图 |
 | `mpeghdec` | `x86_64` | Fraunhofer MPEG-H 解码器 |
 | `quirc` | `x86_64` | QR 解码库 |
-| `scx-scheds-git` | `x86_64` | sched_ext 调度器集合 |
-| `sing-box-ebpf` | `x86_64` | 带实验性 eBPF 入站的 sing-box（reF1nd 分支，`with_ebpf`，替换官方 `sing-box`） |
-| `sing-box-panel` | `any` | sing-box 本地面板：服务控制、订阅/节点、分应用 eBPF 策略、配置安全管线（内嵌 zashboard） |
-| `dracpanel` | `any` | Dracula 主题的 sing-box 桌面 Web UI（官方 dashboard fork + 本地管理模块）；安装到 `/usr/share/dracpanel/ui` |
-| `filee-bin` | `x86_64` | Filee 离线文件转换器（GUI + `filee` CLI，直接重新打包上游预编译的 Linux x64 发布件；每 2 小时自动跟踪上游 release） |
-| `sing-box-rule-sets` | `any` | sing-box 补充规则集：anti-AD 广告表、最新 geoip/cn、mihomo 国内 IP 表、**lyc8503 增强 geosite（国内/境外分流补充）**、必须直连清单、国内广告补漏（每日自动比对上游） |
 | `svt-jpeg-xs-git` | `x86_64` | JPEG XS 编解码器 |
-| `vapoursynth-plugin-mlrt-ncnn-runtime` | `x86_64` | VapourSynth MLRT NCNN runtime |
-| `xclip-git` | `x86_64` | X11 剪贴板命令行工具 |
-| `trae-cn-appimage` | `x86_64` | Trae CN（字节跳动 AI IDE）重打包成单文件 AppImage：官方 Linux tar.gz 解包后用 vendored type2 runtime + zstd squashfs 组装，安装到 `/opt/trae-cn-appimage` |
-| `dsh-desktop-linux` | `x86_64` | DeepSeek Harness 桌面版（上游 ffyfox 的 Electron 壳 + 内嵌 dsh 运行时）；直接重新打包上游 CI 产出的 Arch 安装包，安装到 `/opt/deepseek-harness-desktop` |
+| `folia` | `x86_64` | Folia 音乐播放器（Rust + Zig 构建，`-C target-cpu=x86-64-v3`）；跟随上游 tag，安装到 `/usr/lib/folia` |
+| `zbonsai` | `x86_64` | Rezig 的 Bonsai 组件 |
+| `zclock` | `x86_64` | Rezig 的时钟组件 |
+| `zeraora` | `x86_64` | Rezig 的 Zeraora 组件 |
+| `ziglet` | `x86_64` | Rezig 的 Ziglet 组件 |
+| `zlolcat` | `x86_64` | Rezig 的 lolcat（Zig 实现） |
+| `zmatrix` | `x86_64` | Rezig 的 Matrix 数字雨效果 |
+| `zpipes` | `x86_64` | Rezig 的管道屏保 |
+| `shorin-contrib-git` | `any` | SHORiN 的 Arch 仓库贡献脚本集（VCS 包，版本由 `pkgver()` 计算） |
+| `shorin-pac-git` | `any` | Shorin 的 pacman 辅助工具（VCS 包，版本由 `pkgver()` 计算） |
 
 版本以各目录中的 `PKGBUILD` 和 `.SRCINFO` 为准。
 
@@ -109,21 +110,6 @@ soname 扫描脚本对已发布的包再做一次深度复查，发现依赖过�
 **Sync dae release** 工作流每天 `02:17 UTC` 运行 `scripts/sync-dae-release.sh`：
 比对 dae 上游的发布标记，有更新时重建 `daed-emo` 并等待这次构建结束。
 
-**Refresh sing-box rule-sets** 工作流每天 `23:40 UTC`（次日 `07:40 CST`）运行
-`scripts/refresh-rule-sets.sh`：比对 `sing-box-rule-sets` 六个上游源（anti-AD /
-MetaCubeX `geoip/cn` / mihomo_yamls `cncidr` / 217heidai `adblockfilters` /
-lyc8503 `geosite-cn`、`geosite-geolocation-!cn`）的 sha256，**有变化才**更新 PKGBUILD
-的校验和与 `pkgver`（日期）并推送，进而触发该包重建；没有变化就不产生提交。
-本地可随时 `./scripts/refresh-rule-sets.sh --check` 预览。
-
-**Track Filee releases** 工作流每两小时（`13 */2 * * *`）检查
-[KnifeLemon/Filee](https://github.com/KnifeLemon/Filee) 的最新稳定 release。
-`scripts/update-filee.py` 校验 tag、tarball 与上游发布的 SHA-256（并与 GitHub
-返回的 asset digest 交叉核对），有新版时同时更新 `filee-bin` 的 `PKGBUILD`
-和 `.SRCINFO`；随后在 builder 中用 makepkg 校验元数据、构建并运行时验证候选包，
-全部通过才提交到 `main` 并 dispatch `build.yml` 重建发布。上游 tarball 的结构
-或版本号不合规时更新器失败退出，不会写入半更新的包元数据。
-
 **Track dsh-desktop-linux releases** 工作流每两小时（`53 */2 * * *`）扫描
 [ffyfox/dsh-desktop-linux](https://github.com/ffyfox/dsh-desktop-linux) 的
 release 列表，锁定最新一个真正发布 x86_64 Arch 资产的版本（alpha 标签没有
@@ -138,37 +124,6 @@ tag、资产状态与 GitHub 计算的 sha256 digest，有新版时同时更新 
 依赖者由 ABI watch 裁决——它比对已发布包的 ELF `NEEDED` 与当前库清单，只有
 真实 SONAME 断裂才会 dispatch 定点重建；不存在"邻居更新了就把 pkgrel 抬一档"
 的联动更新。
-
-## sing-box 运维脚本
-
-> **单一事实来源**：本仓库 `scripts/` 下的版本是唯一权威副本。`~/code/toolbox-hub/scripts/sing-box/`
-> 是带注解头（`# sing-box-*:summary=...`，供 Toolbox Hub 目录用）的**镜像**，体与仓库逐字节一致；
-> `~/.local/bin/sing-box-*` 是安装副本。改脚本只改仓库，然后用 toolbox-hub 的 `install.sh` 或
-> 直接 `install -m755` 重新落盘。所有脚本对非 root 调用会自动 `exec sudo` 自身（绝对路径已处理）。
-
-`scripts/` 下有四个配合 `sing-box-ebpf` / `sing-box-rule-sets` 使用的运维脚本（都可重复执行、都走
-"改配置 → `sing-box check` → 备份 → 原子替换 → 重启 → 健康检查 → 失败自动回滚" 的安全管线）：
-
-| 脚本 | 用途 |
-| --- | --- |
-| `apply-audit-fixes.sh` | 审计修复：加 anti-AD 规则集、刷新 geoip/cn、清理冗余规则与 `dns-local`。可选开关：`--with-cncidr`（mihomo 国内 IP 表）、`--with-direct-list`（STUN/主机/LAN cache 直连）、`--with-extra-ads`（国内广告端点补漏）、`--with-lyc-geosite`（lyc8503 增强 geosite 并入 `geosite/cn`、`geosite/geolocation-!cn` 一起匹配）、`--with-dns-groups`（DNS 故障转移组）、`--use-package-paths`（规则集走 `/usr/share`）、`--nxdomain-ads`（把 DNS 广告拦截从 REFUSED 改成 NXDOMAIN，避免应用卡 5 秒） |
-| `switch-to-ebpf.sh` | 把 TUN 入站切换为 eBPF 入站（`--shared <接口>` 可同时接管下游）。健康判据用 `sing-box api ebpf` 附件状态 + "不设代理的请求是否走代理"，失败自动回滚到 TUN |
-| `switch-to-tun.sh` | 从 eBPF 切回 TUN（TUN 靠 `auto_route` 覆盖转发流量，容器/虚拟机也能被代理）。TUN 定义取自最近的 `config.*.pre-ebpf.json` 备份，当前配置里的 DNS 组/广告规则/规则集全部保留；`--from <备份>` 可指定 |
-| `enable-container-proxy.sh` | 让 **rootful** podman 容器也走代理：在 podman 网桥上开启 eBPF `shared` 数据面，并用真实容器验证；`--disable` 关闭 |
-
-> 背景：rootless podman 默认的 pasta 把容器数据包 splice 进宿主栈、不创建宿主 socket，
-> 因此 eBPF 的 local cgroup 数据面看不到容器流量（容器 DNS 与国内直连正常、境外直连失败）。
->
-> **实测结论（kernel 7.2.8-1-cachyos-bore-lto）**：本机内核不支持 TC 路径的 eBPF 监听器
-> （`register TC eBPF TCP listener: operation not supported`），因此 `--data-plane tc` 与
-> `shared`（`packet_rewrite`）**都不可用**，容器透明代理只能靠：
->
-> ```bash
-> podman run --rm --network=host <镜像> ...
-> ```
->
-> 两个脚本现在都会先跑 `sing-box tools ebpf status --mode all`，非 `passed` 时直接拦下并给出上述建议
-> （`--force` 可强行尝试）。注意 `--mode local` 全 PASS **不代表** TC 可用。
 
 ## 添加 AUR 软件包
 
@@ -447,7 +402,7 @@ bash tests/test-static-checks.sh
 - **P1 干净构建**：CachyOS-v3 `devtools` clean chroot；`workflow_dispatch` 可选 `legacy` / `chroot`（默认 legacy，push 始终 legacy）；基线按 builder generation / 架构 / 配置指纹缓存，每包工作副本用后删除；同批次 DAG 依赖通过只读临时仓库传递。切换前必须完成 3 次连续 chroot shadow-run 验收。
 - **P2 上游追踪**：`packages/*/.nvchecker.toml` + 每日 workflow；新版本开/更新 issue，不自动修改 PKGBUILD。
 - **P3 失败闭环**：失败分类与根因进入去重 issue，构建恢复后关闭。
-- **P4 升级验证**：隔离 chroot 验证 `linuxqq-clipsync-git` 常规升级和官方 `sing-box` → `sing-box-ebpf` 替换事务；缺少旧版时明确标记不可验证。
+- **P4 升级验证**：隔离 chroot 中先安装已发布的旧版本，再升级到本轮新构建的包，抓只有升级才暴露的问题（provides/conflicts 写错、SONAME 变了但版本号没变、包改名残留）；对 `linuxqq-wayland-fix-git`（VCS）和 `folia`（跟 tag）执行，缺少旧版时明确标记不可验证。
 - **P5 质量留痕**：默认执行 `check()`；仅 `.skip-check` 可显式豁免；namcap issue 按包 + 规范化警告内容去重，`.namcap-ignore` 支持逐条长期豁免。
 
 详细设计、shadow-run 操作、回退条件、缓存监控和本地 rootless Podman 限制见 [`docs/build-pipeline.md`](docs/build-pipeline.md)。当前任务指针见 [`CURRENT-STATUS.md`](CURRENT-STATUS.md)；历史评审材料归档于 [`docs/archive/`](docs/archive/)。

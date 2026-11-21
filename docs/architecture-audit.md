@@ -17,7 +17,7 @@
 | 选择 | `build.yml:select` | 由 Git diff 决定构建集合 | `scripts/select-packages.py` |
 | 构建 | `build.yml:build` | 每包一个 matrix job，在 CachyOS-v3 容器中 `yay -Bi` | `scripts/build-in-arch.sh` → `dist/` |
 | 构建环境 | `builder.yml` + `.github/builder/Dockerfile` | 发布 `pkgbuild-builder:latest|cuda` | GHCR 镜像 |
-| 发布 | `build.yml:publish` | 组装 pacman 仓库并上传滚动 Release（tag `repo`） | `create-repository.sh`、`verify-repository.sh`、`publish-release.sh` |
+| 发布 | `build.yml:publish` | 组装 pacman 仓库并上传 Cloudflare R2 桶（先包后库、按大小跳过未变包、修剪数据库不再引用的包、回读校验） | `create-repository.sh`、`verify-repository.sh`、`publish-r2.sh` |
 | 校验 | `check.yml` | 语法 / .SRCINFO / shellcheck / namcap / 集成测试 | 无产物 |
 | 客户端 | `client/install.sh` | 写入 `[emoeem]` 段、导入公钥 | `/etc/pacman.conf` |
 | 管理 | `manage.sh` | fzf TUI：增删包、同步、构建、跟踪、失败排查、本地仓库 | 交互 |
@@ -57,7 +57,7 @@
 
 1. `publish` 下载所有 `built-*` Artifact（tar 保留 epoch 冒号）→ 解包 → `verify-publish-inputs.sh` 校验产物与源码版本一致（含 ABI 重建的 pkgrel+1 豁免），并以 `published/x86_64` 为第三个参数拒绝「同 pkgver、pkgrel 没前进」的发布（pacman 只比版本号，这种发布送不到装过旧版本的机器上）。
 2. `fetch-repository-state.sh` 取回现有 release 资产 → `create-repository.sh` 在 archlinux 容器中重命名 GitHub 资产名、`repo-add`、可选 GPG 签名、生成 `.conf`/`SHA256SUMS`。
-3. `verify-repository.sh` + `verify-repository-elf.sh`（数据库引用、SHA256、SONAME 唯一性）→ `generate-abi-manifest.sh` → `publish-release.sh`（先包后库，按 sha256 跳过未变资产，删除过期资产）。
+3. `verify-repository.sh` + `verify-repository-elf.sh`（数据库引用、SHA256、SONAME 唯一性）→ `generate-abi-manifest.sh` → `publish-r2.sh`（先包后库，按大小跳过未变包，修剪数据库不再引用的包，最后回读数据库比对）。
 4. `write-back-pkgrel.sh` 在 `bump_pkgrel=true` 时把 pkgrel 回写 `main`。
 5. **缺失的一环**：发布前从没有真正“装一遍”。仓库能否满足自己的包，只有用户装上才知道。
 

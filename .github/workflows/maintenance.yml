@@ -152,13 +152,16 @@ jobs:
 
       - name: Fetch current repository state
         env:
-          GH_TOKEN: ${{ github.token }}
+          R2_PREFIX: x86_64
+          REPOSITORY_NAME: fuego-repo
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           set -Eeuo pipefail
           mkdir -p published/x86_64
           REPOSITORY_DIR="$GITHUB_WORKSPACE/published/x86_64" \
-          RELEASE_REPOSITORY="$GITHUB_REPOSITORY" \
-          RELEASE_TAG="repo" \
             bash "$GITHUB_WORKSPACE/scripts/fetch-repository-state.sh"
 
       - name: Compare linked sonames with current repositories

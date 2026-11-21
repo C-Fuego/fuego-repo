@@ -1,0 +1,156 @@
+name: Watch pinned upstreams
+
+# Pins are the one update source nothing else watches.  sync.yml pulls the AUR
+# revision a mirror says is current, and upstream-check.yml reports what a
+# .nvchecker.toml describes -- but a package pinned to a revision on purpose
+# (`_commit=<sha>`, or .aur-commit behind a mirror that stopped updating) goes
+# stale in silence.  This job is the only thing that asks "is the revision we
+# hold still the one upstream publishes?".
+#
+# It never edits a PKGBUILD.  Moving a pin changes what gets built and
+# normally needs a pkgrel bump; a scheduled job doing that unattended is the
+# same class of mistake as a check that reports drift it cannot verify.  The
+# output is one issue listing every pin that moved; a human decides.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Only report this package (empty = every pinned package)
+        required: false
+        default: ""
+        type: string
+  schedule:
+    # Sunday 11:17 UTC = Monday 01:17 in Asia/Shanghai.  Placed off the
+    # :23/:53 two-hourly slots used by dependency-drift.yml and
+    # dsh-desktop-linux-update.yml so a long pin probe never queues behind a
+    # rebuild, and after maintenance.yml's daily sweep.
+    - cron: "11 17 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pin-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Compare declared pins with upstream
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No builder container: the probe only runs `git ls-remote`, which needs
+      # git and a network, and both are present on the runner.  Starting a
+      # multi-GiB CachyOS image to ask three questions per package would cost
+      # more than the answers.
+      - name: Probe pins
+        id: probe
+        env:
+          PACKAGE_FILTER: ${{ inputs.package }}
+        # A non-zero status here is data (1 = behind, 2 = unreadable), not a
+        # workflow failure: 1 still has to open the issue, and 2 has to reach
+        # the notification job.  The status is captured and judged below so a
+        # crash can never be read as "nothing to report".
+        run: |
+          set -uo pipefail
+          mkdir -p .cache/pin-watch
+          status=0
+          args=(--root . --report .cache/pin-watch/report.md --json .cache/pin-watch/report.json)
+          if [[ -n "${PACKAGE_FILTER:-}" ]]; then
+            args+=(--package "$PACKAGE_FILTER")
+          fi
+          python3 scripts/hub/pins.py "${args[@]}" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          summary="$(grep -E '^SUMMARY ' .cache/pin-watch/report.md || true)"
+          echo "summary=$summary" >> "$GITHUB_OUTPUT"
+          if [[ -z "$summary" ]]; then
+            echo "::error::pins.py produced no SUMMARY line; the report cannot be trusted"
+            exit 1
+          fi
+          if [[ "$status" -eq 2 ]]; then
+            echo "::error::pins.py could not read some pins (exit 2); see the report"
+            cat .cache/pin-watch/report.md
+            exit 1
+          fi
+          cat .cache/pin-watch/report.md
+          echo "$summary" >> "$GITHUB_STEP_SUMMARY"
+          echo
+          cat .cache/pin-watch/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open, update or close the pin issue
+        if: ${{ always() && steps.probe.outputs.summary != '' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MATCHED: ${{ steps.probe.outputs.status }}
+        run: |
+          set -Eeuo pipefail
+          title_prefix="[pins] "
+          # One issue for the whole repository, not one per package: a pin
+          # sweep is a maintenance task someone does in one sitting, and
+          # fifteen issues would be fifteen tabs for one decision.
+          body="$(cat .cache/pin-watch/report.md)"
+          existing="$(gh issue list --state open --limit 100 --json number,title \
+            | python3 -c 'import json,sys; rows=json.load(sys.stdin); print(next((str(r["number"]) for r in rows if r["title"].startswith(sys.argv[1])), ""))' "$title_prefix")"
+
+          case "$MATCHED" in
+            0)
+              # Every pin current.  Close a standing issue rather than leaving
+              # it as permanent debt -- the same reasoning upstream-check.yml
+              # applies to resolved upstream issues.
+              if [[ -n "$existing" ]]; then
+                gh issue close "$existing" --reason completed \
+                  --comment "$body"$'\n\n'"Every declared pin is current now. Closing."
+              else
+                echo "No pin drift and no open issue; nothing to do."
+              fi
+              ;;
+            1)
+              summary="$(grep -E '^SUMMARY ' .cache/pin-watch/report.md | head -n 1)"
+              title="${title_prefix}${summary}"
+              if [[ -n "$existing" ]]; then
+                # Deduplicate on the report content: a pin that stays behind
+                # for several weeks is one thing to fix, not a weekly ping.
+                if gh issue view "$existing" --json body,comments \
+                    --jq '.body, (.comments[].body)' | grep -qF -- "$title"; then
+                  echo "Issue #$existing already reports this state."
+                else
+                  gh issue comment "$existing" --body "$body"
+                fi
+              else
+                gh issue create --title "$title" --body "$body"
+              fi
+              ;;
+            *)
+              echo "::error::Unhandled probe status $MATCHED"
+              exit 1
+              ;;
+          esac
+
+  notify:
+    name: Notify failure or recovery
+    needs: [watch]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout (for the local composite action)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Update the failure issue
+        uses: $/.github/actions/notify-failure
+        with:
+          title: "[CI] Pin watch failed"
+          outcome: ${{ needs.watch.result == 'failure' && 'failure' || (needs.watch.result == 'success' && 'recovered' || 'none') }}

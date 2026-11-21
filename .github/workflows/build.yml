@@ -50,8 +50,14 @@ permissions:
   packages: read
 
 env:
-  RELEASE_TAG: repo
   REPOSITORY_NAME: fuego-repo
+  # The pacman repository lives in an R2 bucket, not in a GitHub Release: the
+  # bucket is the only copy, so publishing is an upload of the local
+  # repository directory and nothing else. R2_PUBLIC_URL is the URL clients
+  # use and is written into the database's .conf; R2_PREFIX is the path inside
+  # the bucket (one directory per architecture, which is what pacman expects).
+  R2_PREFIX: x86_64
+  R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
   BUILDER_IMAGE: ghcr.io/${{ github.repository_owner }}/pkgbuild-builder:latest
 
 jobs:
@@ -88,11 +94,26 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p published-abi
-          if gh release download repo --repo "$GITHUB_REPOSITORY" --pattern 'fuego-repo-abi-manifest.txt' --dir published-abi --clobber; then
-            manifest_args=(--repository-manifest published-abi/fuego-repo-abi-manifest.txt)
+          # The published ABI manifest lives next to the database in R2. Its
+          # absence is normal on a first publish and only disables ABI-manifest
+          # drift for this run; a configured bucket that cannot be read is a
+          # different matter and fails, because "no manifest" and "cannot see
+          # the manifest" must not look the same.
+          manifest_args=()
+          if [[ -n "${R2_BUCKET:-}" && -n "${R2_ENDPOINT:-}" ]]; then
+            export AWS_ENDPOINT_URL_S3="${R2_ENDPOINT%/}"
+            export AWS_DEFAULT_REGION=auto
+            export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+            export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+            if aws s3 cp --only-show-errors --no-progress \
+                "s3://${R2_BUCKET}/${R2_PREFIX}/fuego-repo-abi-manifest.txt" \
+                published-abi/fuego-repo-abi-manifest.txt; then
+              manifest_args=(--repository-manifest published-abi/fuego-repo-abi-manifest.txt)
+            else
+              echo 'No published ABI manifest in R2; ABI-manifest drift is unavailable for this run.' >&2
+            fi
           else
-            echo 'No published ABI manifest found; ABI-manifest drift is unavailable for this run.' >&2
-            manifest_args=()
+            echo 'R2 is not configured; ABI-manifest drift is unavailable for this run.' >&2
           fi
           selection="${REQUESTED_PACKAGES:-all}"
           if [[ "$EVENT_NAME" == "push" ]]; then
@@ -265,7 +286,10 @@ jobs:
       - name: Fetch current private repository packages
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           set -Eeuo pipefail
           # Lives outside .cache/pkgbuild so the actions/cache snapshot only
@@ -274,16 +298,29 @@ jobs:
           # the legacy subtree that old snapshots had already cached.
           rm -rf .cache/pkgbuild/repo
           mkdir -p localrepo/x86_64
-          # gh release 走的 CDN 偶发 connection reset（run 41889210674 的
-          # svt-jpeg-xs-git job 一次瞬断就报废整个 14 分钟编译），这里两步都
-          # 用仓库现成的 retry_transient 指数退避消化掉；repo release 常驻，
-          # "不存在"重试三次的代价只在假想场景里发生。
-          source "$GITHUB_WORKSPACE/scripts/lib/timing.sh"
-          if retry_transient 3 20 -- gh release view repo --repo "$GITHUB_REPOSITORY"; then
-            retry_transient 3 20 -- gh release download repo \
-              --repo "$GITHUB_REPOSITORY" --pattern "*.pkg.tar.zst" \
-              --dir localrepo/x86_64 --clobber
+          # The build needs the published packages to satisfy in-repo
+          # dependencies. A missing bucket is the first-publish case and only
+          # means there is nothing to seed; a bucket that cannot be read fails
+          # the job, because building against half a repository produces a
+          # package whose dependencies the publish step then rejects.
+          if [[ -z "${R2_BUCKET:-}" || -z "${R2_ENDPOINT:-}" ]]; then
+            echo 'R2 is not configured; starting with an empty local repository.'
+            exit 0
           fi
+          export AWS_ENDPOINT_URL_S3="${R2_ENDPOINT%/}"
+          export AWS_DEFAULT_REGION=auto
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          source "$GITHUB_WORKSPACE/scripts/lib/timing.sh"
+          if ! retry_transient 3 20 -- aws s3 cp --only-show-errors --no-progress --recursive \
+              "s3://${R2_BUCKET}/x86_64/" localrepo/x86_64/; then
+            printf '::error::Cannot download published packages from s3://%s/x86_64/.\n' "$R2_BUCKET"
+            exit 1
+          fi
+          # Only package files seed the local repository; the database would be
+          # rebuilt by create-repository.sh from scratch.
+          find localrepo/x86_64 -maxdepth 1 -type f ! -name '*.pkg.tar.zst' -delete
+          ls localrepo/x86_64 | head -5
 
       - name: Build in reusable CachyOS builder
         shell: bash
@@ -820,11 +857,18 @@ jobs:
       - name: Fetch current repository state
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           REPOSITORY_DIR: published/x86_64
-          RELEASE_REPOSITORY: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
+          # The bucket is the only copy of the published repository, so this
+          # must succeed before anything is built against it: publishing on top
+          # of a state that could not be fetched would delete every package
+          # the new run does not happen to build (publish-r2.sh prunes what the
+          # database does not reference).
           bash source/scripts/fetch-repository-state.sh
 
       - name: Install publication verification tools
@@ -865,7 +909,7 @@ jobs:
             --volume "$GITHUB_WORKSPACE/repository-key.asc:/run/secrets/repository-key.asc:ro" \
             --volume "$GITHUB_WORKSPACE/repository-passphrase:/run/secrets/repository-passphrase:ro" \
             --env "REPOSITORY_NAME=${REPOSITORY_NAME}" \
-            --env "REPOSITORY_SERVER=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}" \
+            --env "REPOSITORY_SERVER=${R2_PUBLIC_URL:-https://example.invalid/configure-R2_PUBLIC_URL}/${R2_PREFIX}" \
             --env "REPOSITORY_KEY_PASSPHRASE_FILE=/run/secrets/repository-passphrase" \
             "$BUILDER_IMAGE" \
             bash /workspace/scripts/create-repository.sh
@@ -911,15 +955,19 @@ jobs:
             "$BUILDER_IMAGE" \
             bash /workspace/scripts/repository-install-test.sh
 
-      - name: Publish repository release
+      - name: Publish repository to R2
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           REPOSITORY_DIR: published/x86_64
-          RELEASE_REPOSITORY: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
-          bash source/scripts/publish-release.sh
+          # Only reached after the install test succeeded, so the bucket never
+          # serves a database whose packages cannot be installed together.
+          bash source/scripts/publish-r2.sh
 
       # 回写不再只在 bump_pkgrel 输入下发生：构建前的 pkgrel 对齐
       # (pkgrel-floor.sh) 同样会抬高产物版本，源码树不追上就会一直漂移。

@@ -13,14 +13,15 @@ on:
     paths:
       - "removals/**"
       - "scripts/create-repository.sh"
-      - "scripts/publish-release.sh"
+      - "scripts/publish-r2.sh"
       - ".github/workflows/remove.yml"
 
 permissions:
   contents: read
 
 env:
-  RELEASE_TAG: repo
+  R2_PREFIX: x86_64
+  R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
   REPOSITORY_NAME: fuego-repo
   BUILDER_IMAGE: ghcr.io/${{ github.repository_owner }}/pkgbuild-builder:latest
 
@@ -134,9 +135,11 @@ jobs:
         if: steps.removals.outputs.changed == 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           REPOSITORY_DIR: published/x86_64
-          RELEASE_REPOSITORY: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
           bash source/scripts/fetch-repository-state.sh
@@ -171,7 +174,7 @@ jobs:
             --volume "$GITHUB_WORKSPACE/repository-key.asc:/run/secrets/repository-key.asc:ro" \
             --volume "$GITHUB_WORKSPACE/repository-passphrase:/run/secrets/repository-passphrase:ro" \
             --env "REPOSITORY_NAME=${REPOSITORY_NAME}" \
-            --env "REPOSITORY_SERVER=https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}" \
+            --env "REPOSITORY_SERVER=${R2_PUBLIC_URL:-https://example.invalid/configure-R2_PUBLIC_URL}/${R2_PREFIX}" \
             --env "REPOSITORY_KEY_PASSPHRASE_FILE=/run/secrets/repository-passphrase" \
             "$BUILDER_IMAGE" \
             bash /workspace/scripts/create-repository.sh
@@ -200,13 +203,15 @@ jobs:
             "$BUILDER_IMAGE" \
             bash -c 'bash /workspace/scripts/verify-repository.sh /repository'
 
-      - name: Publish repository release
+      - name: Publish repository to R2
         if: steps.removals.outputs.changed == 'true'
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           REPOSITORY_DIR: published/x86_64
-          RELEASE_REPOSITORY: ${{ github.repository }}
         run: |
           set -Eeuo pipefail
-          bash source/scripts/publish-release.sh
+          bash source/scripts/publish-r2.sh

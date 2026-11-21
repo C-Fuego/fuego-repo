@@ -22,10 +22,20 @@ printf 'pkgbase = fixture\n\tsource = git+https://github.com/astrand/xclip\n' > 
 git init -q "$cache_dir/xclip"
 git -C "$cache_dir/xclip" remote add origin https://example.invalid/wrong-repository
 bash "$root/scripts/validate-source-cache.sh" "$package_dir" "$cache_dir"
-[[ ! -e "$cache_dir/xclip" ]] || fail 'stale Git cache collision was not removed'
+[[ ! -e "$cache_dir/xclip" ]] || fail 'stale Git source cache collision was not removed'
 
+# `git remote get-url` re-applies the caller's url.<base>.insteadOf rewrites,
+# so on a machine that proxies GitHub (url.https://<mirror>/.insteadOf
+# https://github.com/, a common Chinese-network setting) the stored origin
+# reads back as the mirror URL and this matching case looks like a collision.
+# That is a property of the developer's global config, not of the cache, and CI
+# never sees it. `insteadOf` appends and cannot be un-set, so the fixture is
+# built against an empty global config instead: the script under test does not
+# read git config, only the URLs, so nothing about the case is weakened.
 git init -q "$cache_dir/xclip"
-git -C "$cache_dir/xclip" remote add origin https://github.com/astrand/xclip.git
+GIT_CONFIG_GLOBAL=/dev/null git -C "$cache_dir/xclip" remote add origin https://github.com/astrand/xclip.git
+[[ "$(GIT_CONFIG_GLOBAL=/dev/null git -C "$cache_dir/xclip" remote get-url origin)" == 'https://github.com/astrand/xclip.git' ]] \
+    || fail 'fixture could not store an unrewritten origin; isolate url.*.insteadOf first'
 bash "$root/scripts/validate-source-cache.sh" "$package_dir" "$cache_dir"
 [[ -d "$cache_dir/xclip/.git" ]] || fail 'matching Git source cache was removed'
 
