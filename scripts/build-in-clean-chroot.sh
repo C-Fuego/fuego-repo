@@ -38,7 +38,7 @@ order = ['cachyos-v3', 'cachyos-extra-v3', 'cachyos-core-v3', 'cachyos']
 missing = [name for name in order if name not in by_name]
 if missing: raise SystemExit('Builder pacman.conf missing CachyOS repos: ' + ', '.join(missing))
 if 'options' not in by_name: raise SystemExit('Builder pacman.conf missing [options] section')
-other = [section for section in other if not re.match(r'\s*\[(?:emoeem|emoeem-staging)\]', section)]
+other = [section for section in other if not re.match(r'\s*\[(?:fuego-repo|fuego-repo-staging)\]', section)]
 Path(sys.argv[1]).write_text(''.join(options + [by_name['options']] + [by_name[n] for n in order] + other), encoding='utf-8')
 PY
 # Install the wrapper before mkarchroot: baseline creation itself invokes
@@ -130,7 +130,7 @@ text = path.read_text(encoding='utf-8')
 match = re.search(r'(?m)^\[cachyos-v3\]\s*$', text)
 if not match:
     raise SystemExit('Clean chroot config lost the cachyos-v3 repository')
-staging = '[emoeem]\nSigLevel = Never\nServer = file:///run/pkgbuild-localrepo\n\n'
+staging = '[fuego-repo]\nSigLevel = Never\nServer = file:///run/pkgbuild-localrepo\n\n'
 path.write_text(text[:match.start()] + staging + text[match.start():], encoding='utf-8')
 PYCONF
 fi

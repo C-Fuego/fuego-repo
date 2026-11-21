@@ -90,8 +90,8 @@ jobs:
             printf '::error::No published package could be downloaded; refusing to report "no drift".\n'
             exit 1
           fi
-          if [[ ! -s published/x86_64/emoeem.db ]]; then
-            printf '::error::Published release has packages but no emoeem.db; the detectors cannot sync the local repository.\n'
+          if [[ ! -s published/x86_64/fuego-repo.db ]]; then
+            printf '::error::Published release has packages but no fuego-repo.db; the detectors cannot sync the local repository.\n'
             exit 1
           fi
 

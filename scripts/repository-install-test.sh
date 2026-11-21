@@ -26,7 +26,7 @@ export LC_ALL=C
 
 repository_dir="${REPOSITORY_DIR:-/repository}"
 incoming_dir="${INCOMING_DIR:-/incoming}"
-repository_name="${REPOSITORY_NAME:-emoeem}"
+repository_name="${REPOSITORY_NAME:-fuego-repo}"
 workspace_dir="${WORKSPACE_DIR:-/workspace}"
 install_all="${INSTALL_TEST_ALL:-0}"
 skip_list="${INSTALL_TEST_SKIP:-}"

@@ -9,7 +9,7 @@ set -Eeuo pipefail
 export LC_ALL=C
 
 repository_dir="${1:?usage: generate-abi-manifest.sh <repository-dir>}"
-repository_name="${REPOSITORY_NAME:-emoeem}"
+repository_name="${REPOSITORY_NAME:-fuego-repo}"
 [[ -d "$repository_dir" ]] || { printf 'not a directory: %s\n' "$repository_dir" >&2; exit 2; }
 
 out="$repository_dir/${repository_name}-abi-manifest.txt"

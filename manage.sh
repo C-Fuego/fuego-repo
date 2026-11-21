@@ -8,8 +8,8 @@ repo_root="$(
 )"
 readonly repo_root
 
-github_repository="${PKGBUILD_GITHUB_REPOSITORY:-emoeem/pkgbuild}"
-pacman_repository="${PKGBUILD_PACMAN_REPOSITORY:-emoeem}"
+github_repository="${PKGBUILD_GITHUB_REPOSITORY:-C-Fuego/pkgbuild}"
+pacman_repository="${PKGBUILD_PACMAN_REPOSITORY:-fuego-repo}"
 default_make_jobs="${PKGBUILD_DEFAULT_MAKE_JOBS:-2}"
 
 if [[ ! "$github_repository" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then

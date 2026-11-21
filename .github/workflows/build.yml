@@ -51,7 +51,7 @@ permissions:
 
 env:
   RELEASE_TAG: repo
-  REPOSITORY_NAME: emoeem
+  REPOSITORY_NAME: fuego-repo
   BUILDER_IMAGE: ghcr.io/${{ github.repository_owner }}/pkgbuild-builder:latest
 
 jobs:
@@ -88,8 +88,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p published-abi
-          if gh release download repo --repo "$GITHUB_REPOSITORY" --pattern 'emoeem-abi-manifest.txt' --dir published-abi --clobber; then
-            manifest_args=(--repository-manifest published-abi/emoeem-abi-manifest.txt)
+          if gh release download repo --repo "$GITHUB_REPOSITORY" --pattern 'fuego-repo-abi-manifest.txt' --dir published-abi --clobber; then
+            manifest_args=(--repository-manifest published-abi/fuego-repo-abi-manifest.txt)
           else
             echo 'No published ABI manifest found; ABI-manifest drift is unavailable for this run.' >&2
             manifest_args=()
@@ -303,7 +303,7 @@ jobs:
           echo "Selected build mode: $build_mode (push always uses legacy)." >> "$GITHUB_STEP_SUMMARY"
           docker run --rm \
             --volume "$GITHUB_WORKSPACE/localrepo/x86_64:/repo" \
-            "$BUILDER_IMAGE" bash -lc 'shopt -s nullglob; packages=(/repo/*.pkg.tar.zst); if (( ${#packages[@]} > 0 )); then rm -f /repo/emoeem.db* /repo/emoeem.files*; repo-add --remove /repo/emoeem.db.tar.gz "${packages[@]}"; fi'
+            "$BUILDER_IMAGE" bash -lc 'shopt -s nullglob; packages=(/repo/*.pkg.tar.zst); if (( ${#packages[@]} > 0 )); then rm -f /repo/fuego-repo.db* /repo/fuego-repo.files*; repo-add --remove /repo/fuego-repo.db.tar.gz "${packages[@]}"; fi'
           container_security_args=()
           if [[ "$build_mode" == chroot ]]; then
             # The hosted runner itself is disposable. Run only the repository's
@@ -323,7 +323,7 @@ jobs:
             --volume "$GITHUB_WORKSPACE/localrepo/x86_64:/run/pkgbuild-localrepo:ro" \
             --env "LOCAL_REPO_DIR=/localrepo" \
             --env "LOCAL_REPO_MOUNT=/run/pkgbuild-localrepo" \
-            --env "LOCAL_REPO_NAME=emoeem" \
+            --env "LOCAL_REPO_NAME=fuego-repo" \
             --env "CLEAN_CHROOT_BUILD=$([[ "$build_mode" == chroot ]] && echo 1 || echo 0)" \
             --env "BUILDER_GENERATION=$BUILDER_GENERATION" \
             --env "MAKE_JOBS=$MAKE_JOBS" \
@@ -381,7 +381,10 @@ jobs:
           if [[ -n "$issue" ]]; then gh issue comment "$issue" --body-file "$body_file"; else gh issue create --title "$key" --body-file "$body_file"; fi
 
       - name: Upgrade-path dry run
-        if: success() && (matrix.package == 'linuxqq-clipsync-git' || matrix.package == 'sing-box-ebpf')
+        # Scoped to the packages whose upgrade path can change form between
+        # publish rounds: the AUR-synced -git package and the tag-tracking
+        # crate build. Everything else is a same-shape rebuild.
+        if: success() && (matrix.package == 'linuxqq-wayland-fix-git' || matrix.package == 'folia')
         shell: bash
         env:
           PACKAGE_NAME: ${{ matrix.package }}

@@ -20,7 +20,7 @@ set -Eeuo pipefail
 # pacman.conf is still refused outright - that is the case where a distro
 # package could silently win.
 
-local_repo_name="${LOCAL_REPO_NAME:-emoeem}"
+local_repo_name="${LOCAL_REPO_NAME:-fuego-repo}"
 local_repo_dir="${LOCAL_REPO_DIR:-}"
 
 repo_list="$(pacman-conf --repo-list)"

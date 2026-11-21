@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 readonly incoming_dir="${INCOMING_DIR:-/incoming}"
 readonly repository_dir="${REPOSITORY_DIR:-/repository}"
-readonly repository_name="${REPOSITORY_NAME:-emoeem}"
+readonly repository_name="${REPOSITORY_NAME:-fuego-repo}"
 readonly repository_key="${REPOSITORY_KEY:-/run/secrets/repository-key.asc}"
 readonly removal_file="${REMOVE_PACKAGES_FILE:-/remove-packages}"
 readonly repository_server="${REPOSITORY_SERVER:-file:///absolute/path/to/private-repo/x86_64}"

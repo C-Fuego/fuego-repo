@@ -6,7 +6,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT INT TERM
 mkdir -p "$tmp/bin" "$tmp/repository" "$tmp/incoming/demo" "$tmp/workspace/scripts" "$tmp/state"
 cp "$root/scripts/select-incoming-packages.sh" "$tmp/workspace/scripts/"
-touch "$tmp/repository/emoeem.db"
+touch "$tmp/repository/fuego-repo.db"
 printf '[options]\nArchitecture = auto\n' > "$tmp/pacman.conf"
 # Incoming packages sit one directory per package base, and the mocked .PKGINFO
 # carries the combined `pkgver = <ver>-<pkgrel>` that makepkg writes, so the
@@ -24,7 +24,7 @@ set -Eeuo pipefail
 printf 'pacman %s\n' "$*" >> "$MOCK_LOG"
 case "$1" in
   -Syu) exit 0 ;;
-  -Sl) printf '%s\n' 'emoeem other-pkg 2.0-1' ;;
+  -Sl) printf '%s\n' 'fuego-repo other-pkg 2.0-1' ;;
   -U)
     if [[ "$*" != *--assume-installed* && "$MOCK_EXTERNAL_DEP_FAIL" == 1 ]]; then
       printf 'warning: cannot resolve "%s", a dependency of "demo"\n' "$MOCK_MISSING_DEP"
@@ -46,7 +46,7 @@ run_test() {
   (
     export PATH="$tmp/bin:$PATH"
     export REPOSITORY_DIR="$tmp/repository" INCOMING_DIR="$tmp/incoming"
-    export WORKSPACE_DIR="$tmp/workspace" REPOSITORY_NAME=emoeem
+    export WORKSPACE_DIR="$tmp/workspace" REPOSITORY_NAME=fuego-repo
     export PACMAN_CONF="$tmp/pacman.conf"
     export MOCK_MISSING_DEP="$1" MOCK_EXTERNAL_DEP_FAIL="$2"
     bash "$script"

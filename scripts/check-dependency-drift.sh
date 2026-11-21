@@ -9,6 +9,11 @@ export LC_ALL=C
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/build-strategy.sh
 source "${script_dir}/lib/build-strategy.sh"
+# The pacman repository name is configurable; the published database file is
+# <name>.db.tar.gz.  Hardcoding "emoeem" here meant a renamed repository produced
+# a second, empty database that pacman would happily read: exactly the silent
+# no-drift result this file exists to refuse.
+repository_name="${REPOSITORY_NAME:-fuego-repo}"
 
 repo_dir="${1:-}"
 root="${2:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -23,11 +28,11 @@ if [[ -n "${LOCAL_REPO_DIR:-}" ]]; then
     local_packages=("$local_copy"/*.pkg.tar.zst)
     shopt -u nullglob
     if (( ${#local_packages[@]} > 0 )); then
-        repo-add --remove "$local_copy/emoeem.db.tar.gz" "${local_packages[@]}" >/dev/null
-        printf '[emoeem]\nSigLevel = Never\nServer = file://%s\n' "$local_copy" > /tmp/emo-repo.conf
-        awk '/^\[emoeem\]$/{skip=1;next} skip && /^\[/{skip=0} !skip{print}' /etc/pacman.conf >> /tmp/emo-repo.conf
+        repo-add --remove "$local_copy/${repository_name}.db.tar.gz" "${local_packages[@]}" >/dev/null
+        printf '[%s]\nSigLevel = Never\nServer = file://%s\n' "$repository_name" "$local_copy" > /tmp/emo-repo.conf
+        awk -v name="$repository_name" '$0 == "[" name "]"{skip=1;next} skip && /^\[/{skip=0} !skip{print}' /etc/pacman.conf >> /tmp/emo-repo.conf
         cat /tmp/emo-repo.conf > /etc/pacman.conf
-        # 注册后立即同步:emoeem 内部包互相依赖时 pacman -Si 才能解析到已发布
+        # 注册后立即同步:仓库内部包互相依赖时 pacman -Si 才能解析到已发布
         # 版本,否则这些依赖全部计入 unresolved,变成漏报的漂移盲区。
         pacman -Sy --noconfirm >/dev/null
     fi

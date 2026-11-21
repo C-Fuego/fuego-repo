@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-repo_name="${LOCAL_REPO_NAME:-emoeem}"
+repo_name="${LOCAL_REPO_NAME:-fuego-repo}"
 repo_dir="${LOCAL_REPO_DIR:-}"
 
 if [[ -n "$repo_dir" ]]; then

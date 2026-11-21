@@ -45,7 +45,7 @@ jobs:
           cp incoming/*.pkg.tar.zst published/x86_64/
           count="$(find incoming -maxdepth 1 -type f -name '*.pkg.tar.zst' | wc -l)"
           [[ "$count" -gt 0 ]] || { echo 'No published packages downloaded.' >&2; exit 1; }
-          [[ -s published/x86_64/emoeem.db ]] || { echo 'Published repository database missing.' >&2; exit 1; }
+          [[ -s published/x86_64/fuego-repo.db ]] || { echo 'Published repository database missing.' >&2; exit 1; }
           echo "Downloaded $count published package artifacts."
 
       - name: Install all packages and verify installed runtime
@@ -59,7 +59,7 @@ jobs:
             --volume "$GITHUB_WORKSPACE/incoming:/incoming:ro" \
             --volume "$GITHUB_WORKSPACE:/workspace:ro" \
             --env INSTALL_TEST_ALL=1 \
-            --env REPOSITORY_NAME=emoeem \
+            --env REPOSITORY_NAME=fuego-repo \
             "$BUILDER_IMAGE" \
             bash /workspace/scripts/repository-install-test.sh
 

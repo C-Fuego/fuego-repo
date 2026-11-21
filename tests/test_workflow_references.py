@@ -73,7 +73,7 @@ class WorkflowReferenceTests(unittest.TestCase):
     def test_build_workflow_wires_published_abi_manifest_into_planner(self):
         workflow = (ROOT / ".github/workflows/build.yml").read_text(encoding="utf-8")
         self.assertIn("--repository-manifest", workflow)
-        self.assertIn("emoeem-abi-manifest.txt", workflow)
+        self.assertIn("fuego-repo-abi-manifest.txt", workflow)
 
     def test_build_failure_issue_closure_reads_one_json_object_per_line(self):
         workflow = (ROOT / ".github/workflows/build.yml").read_text(encoding="utf-8")

@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 repository_dir="${1:-${REPOSITORY_DIR:-}}"
-repository_name="${REPOSITORY_NAME:-emoeem}"
+repository_name="${REPOSITORY_NAME:-fuego-repo}"
 [[ -n "$repository_dir" ]] || { echo 'Usage: verify-repository.sh <repository-dir>' >&2; exit 2; }
 
 db="$repository_dir/$repository_name.db"

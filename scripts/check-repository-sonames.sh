@@ -73,8 +73,9 @@ if ! bash "${script_dir}/setup-container-repos.sh"; then
     printf 'third-party repositories unavailable; refusing to report false positives\n' >&2
     exit 3
 fi
-if ! grep -qx '\[emoeem\]' /etc/pacman.conf; then
-    printf '\n[emoeem]\nSigLevel = Never\nServer = file://%s\n' "$published" >> /etc/pacman.conf
+repository_name="${REPOSITORY_NAME:-fuego-repo}"
+if ! grep -qx "\\[$repository_name\\]" /etc/pacman.conf; then
+    printf '\n[%s]\nSigLevel = Never\nServer = file://%s\n' "$repository_name" "$published" >> /etc/pacman.conf
 fi
 pacman -Syu --noconfirm expac > /dev/null
 
