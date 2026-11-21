@@ -199,8 +199,8 @@ sudo pacman -S fzf github-cli
 
 每个包会生成独立的私有 Actions Artifact。Artifact 使用 tar 作为传输
 容器，以便保留 Arch `epoch` 产生的冒号文件名；发布任务解包后，原始软件包
-文件名和内容不会发生变化。所有成功产物随后被合并进 `published/x86_64/`
-并上传到 R2 桶的 `x86_64/` 前缀：
+文件名和内容不会发生变化。所有成功产物随后被合并进 `published/x86_64-v3/`
+并上传到 R2 桶的 `x86_64-v3/` 前缀：
 
 - `*.pkg.tar.zst`
 - `fuego-repo.db` 与 `fuego-repo.db.tar.zst`
@@ -222,7 +222,7 @@ R2 里只保留当前数据库能解析到的那些 `.pkg.tar.zst`，不会有�
 ```ini
 [fuego-repo]
 SigLevel = Required DatabaseRequired
-Server = https://ignacio.dpdns.org/x86_64
+Server = https://ignacio.dpdns.org/x86_64-v3
 ```
 
 `SigLevel` 里的 `Required` 要求仓库签名 key 已经通过 keyring 包装进
@@ -233,10 +233,10 @@ Server = https://ignacio.dpdns.org/x86_64
 桶的布局就是 pacman 的布局，一个前缀一个架构：
 
 ```
-x86_64/fuego-repo.db          数据库（永不缓存）
-x86_64/fuego-repo.db.sig
-x86_64/fuego-repo.files
-x86_64/<pkg>-<ver>-<rel>-x86_64.pkg.tar.zst   （一年不可变缓存）
+x86_64-v3/fuego-repo.db          数据库（永不缓存）
+x86_64-v3/fuego-repo.db.sig
+x86_64-v3/fuego-repo.files
+x86_64-v3/<pkg>-<ver>-<rel>-x86_64.pkg.tar.zst   （一年不可变缓存）
 ```
 
 发布顺序是「先包后库」：包文件先传，数据库最后传，所以客户端任何时候读到的
@@ -336,7 +336,7 @@ pacman 拦不住；本地 hook 当场报了 `fuego-repo  ffmpeg-full`，但真�
 Actions **Variables**：
 
 - `R2_BUCKET`：桶名，与 pacman 仓库名相同：`fuego-repo`。
-- `R2_PUBLIC_URL`：客户端使用的地址，`https://ignacio.dpdns.org/x86_64`
+- `R2_PUBLIC_URL`：客户端使用的地址，`https://ignacio.dpdns.org/x86_64-v3`
   （必须是 https，末尾不带斜杠）。
 
 Actions **Secrets**：
@@ -352,7 +352,7 @@ Settings → Custom Domains）。接上之前若该主机名已有 A/AAAA 记录
 R2 争用同一名字，需要先删掉。
 
 工作流会签名每个软件包、数据库和 files 数据库，并将公钥导出为
-`x86_64/fuego-repo-key.asc`。客户端导入并本地信任该密钥后，可改用
+`x86_64-v3/fuego-repo-key.asc`。客户端导入并本地信任该密钥后，可改用
 `SigLevel = Required DatabaseRequired`。
 
 建议为 CI 单独创建仅用于仓库签名的 GPG 子密钥。

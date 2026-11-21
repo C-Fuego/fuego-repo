@@ -62,7 +62,7 @@ jobs:
       - name: Fetch current repository state
         id: state
         env:
-          R2_PREFIX: x86_64
+          R2_PREFIX: x86_64-v3
           REPOSITORY_NAME: fuego-repo
           R2_BUCKET: ${{ vars.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}

@@ -7,7 +7,7 @@ readonly repository_dir="${REPOSITORY_DIR:-/repository}"
 readonly repository_name="${REPOSITORY_NAME:-fuego-repo}"
 readonly repository_key="${REPOSITORY_KEY:-/run/secrets/repository-key.asc}"
 readonly removal_file="${REMOVE_PACKAGES_FILE:-/remove-packages}"
-readonly repository_server="${REPOSITORY_SERVER:-file:///absolute/path/to/private-repo/x86_64}"
+readonly repository_server="${REPOSITORY_SERVER:-file:///absolute/path/to/private-repo/x86_64-v3}"
 
 mkdir -p "$repository_dir"
 rm -f "${repository_dir}/.gitkeep"

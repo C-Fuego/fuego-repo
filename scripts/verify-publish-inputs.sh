@@ -10,7 +10,7 @@ source "${script_dir}/lib/pkgrel-policy.sh"
 
 incoming="${1:-/incoming}"
 root="${2:-$(cd "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
-# 已发布仓库目录（x86_64 包所在目录）。给了它就会额外检查「这次发布是不是
+# 已发布仓库目录（x86_64-v3 包所在目录）。给了它就会额外检查「这次发布是不是
 # 真的能让已安装的机器升上去」；没给就不检查，保持脚本可单独使用。
 published="${3:-}"
 # CI runs the publication gate with SKIP_NOOP_PUBLISH=1: an artifact whose

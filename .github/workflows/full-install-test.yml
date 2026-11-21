@@ -32,7 +32,7 @@ jobs:
       - name: Download the current published repository and all packages
         shell: bash
         env:
-          R2_PREFIX: x86_64
+          R2_PREFIX: x86_64-v3
           R2_BUCKET: ${{ vars.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

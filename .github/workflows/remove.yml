@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 env:
-  R2_PREFIX: x86_64
+  R2_PREFIX: x86_64-v3
   R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
   REPOSITORY_NAME: fuego-repo
   BUILDER_IMAGE: ghcr.io/${{ github.repository_owner }}/pkgbuild-builder:latest

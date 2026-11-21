@@ -25,13 +25,13 @@
 # pacman may never fetch again.
 #
 # Environment:
-#   REPOSITORY_DIR     directory holding the built repository (published/x86_64)
+#   REPOSITORY_DIR     directory holding the built repository (published/x86_64-v3)
 #   REPOSITORY_NAME    pacman repository name (fuego-repo)
 #   R2_BUCKET          bucket name
 #   R2_ENDPOINT        https://<account>.r2.cloudflarestorage.com
 #   R2_ACCESS_KEY_ID   \
 #   R2_SECRET_ACCESS_KEY  > S3 credentials with object read/write on the bucket
-#   R2_PREFIX          optional key prefix (default: x86_64)
+#   R2_PREFIX          optional key prefix (default: x86_64-v3)
 #   AWS_ENDPOINT_URL_S3 set by this script from R2_ENDPOINT
 #
 # Uses the AWS CLI, which is preinstalled on the GitHub-hosted runner. It is
@@ -55,7 +55,7 @@ readonly repository_dir="${REPOSITORY_DIR}"
 readonly repository_name="${REPOSITORY_NAME}"
 readonly bucket="${R2_BUCKET}"
 readonly endpoint="${R2_ENDPOINT%/}"
-readonly prefix="${R2_PREFIX:-x86_64}"
+readonly prefix="${R2_PREFIX:-x86_64-v3}"
 
 export AWS_ENDPOINT_URL_S3="$endpoint"
 export AWS_DEFAULT_REGION="auto"

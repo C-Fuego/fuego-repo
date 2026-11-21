@@ -33,7 +33,7 @@ readonly state_dir="${REPOSITORY_DIR}"
 readonly repository_name="${REPOSITORY_NAME}"
 readonly bucket="${R2_BUCKET:-}"
 readonly endpoint="${R2_ENDPOINT:-}"
-readonly prefix="${R2_PREFIX:-x86_64}"
+readonly prefix="${R2_PREFIX:-x86_64-v3}"
 
 mkdir -p "$state_dir"
 

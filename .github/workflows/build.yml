@@ -56,7 +56,7 @@ env:
   # repository directory and nothing else. R2_PUBLIC_URL is the URL clients
   # use and is written into the database's .conf; R2_PREFIX is the path inside
   # the bucket (one directory per architecture, which is what pacman expects).
-  R2_PREFIX: x86_64
+  R2_PREFIX: x86_64-v3
   R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
   BUILDER_IMAGE: ghcr.io/${{ github.repository_owner }}/pkgbuild-builder:latest
 
