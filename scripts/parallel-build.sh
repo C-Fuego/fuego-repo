@@ -31,7 +31,9 @@ jobs=0
 make_jobs=0
 out_dir="${root}/build-output"
 runner="auto"
-image="${BUILDER_IMAGE:-ghcr.io/emoeem/pkgbuild-builder:latest}"
+# Docker rejects uppercase in an image reference: lowercase the default
+# owner so a fork under a mixed-case account still pulls its own image.
+image="${BUILDER_IMAGE:-ghcr.io/$(printf '%s' "${PKGBUILD_GITHUB_REPOSITORY_OWNER:-emoeem}" | tr '[:upper:]' '[:lower:]')/pkgbuild-builder:latest}"
 dry_run=0
 keep_going=0
 

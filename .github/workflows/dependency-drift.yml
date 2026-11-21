@@ -37,7 +37,10 @@ env:
   # 就会随 runner 共享 IP 的剩余额度随机变成 toomanyrequests，把「检测器跑不
   # 动」伪装成 workflow 失败（run 37989749507）。拉取失败必须是响的失败，
   # 所以镜像换成本仓库自己的，而不是加 retry。
-  BUILDER_IMAGE: ghcr.io/${{ github.repository_owner }}/pkgbuild-builder:latest
+  # Docker rejects uppercase in an image reference and GitHub keeps the
+  # owner's original casing, so the image is built from a lowercased
+  # owner inside the steps that need it, never interpolated here.
+  BUILDER_IMAGE_REPOSITORY: ${{ github.repository_owner }}/pkgbuild-builder:latest
 
 jobs:
   detect:

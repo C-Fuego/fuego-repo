@@ -23,7 +23,10 @@ env:
   R2_PREFIX: x86_64-v3
   R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
   REPOSITORY_NAME: fuego-repo
-  BUILDER_IMAGE: ghcr.io/${{ github.repository_owner }}/pkgbuild-builder:latest
+  # Docker rejects uppercase in an image reference and GitHub keeps the
+  # owner's original casing, so the image is built from a lowercased
+  # owner inside the steps that need it, never interpolated here.
+  BUILDER_IMAGE_REPOSITORY: ${{ github.repository_owner }}/pkgbuild-builder:latest
 
 jobs:
   remove:
@@ -162,6 +165,7 @@ jobs:
           REPOSITORY_KEY_PASSPHRASE: ${{ secrets.REPOSITORY_KEY_PASSPHRASE }}
         run: |
           set -Eeuo pipefail
+          builder_image="ghcr.io/${BUILDER_IMAGE_REPOSITORY,,}"
           mkdir -p incoming published/x86_64
           # 密码经 0600 文件传入容器，而不是 --env（宿主机 ps 可见）。
           install -m0600 /dev/null repository-passphrase
@@ -176,7 +180,7 @@ jobs:
             --env "REPOSITORY_NAME=${REPOSITORY_NAME}" \
             --env "REPOSITORY_SERVER=${R2_PUBLIC_URL:-https://example.invalid/configure-R2_PUBLIC_URL}/${R2_PREFIX}" \
             --env "REPOSITORY_KEY_PASSPHRASE_FILE=/run/secrets/repository-passphrase" \
-            "$BUILDER_IMAGE" \
+            "$builder_image" \
             bash /workspace/scripts/create-repository.sh
           rm -f repository-passphrase
 
@@ -185,11 +189,12 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          builder_image="ghcr.io/${BUILDER_IMAGE_REPOSITORY,,}"
           docker run --rm \
             --volume "$GITHUB_WORKSPACE/published/x86_64:/repository" \
             --volume "$GITHUB_WORKSPACE/source:/workspace:ro" \
             --env "REPOSITORY_NAME=${REPOSITORY_NAME}" \
-            "$BUILDER_IMAGE" \
+            "$builder_image" \
             bash /workspace/scripts/generate-abi-manifest.sh /repository
 
       - name: Verify repository integrity
@@ -197,10 +202,11 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          builder_image="ghcr.io/${BUILDER_IMAGE_REPOSITORY,,}"
           docker run --rm \
             --volume "$GITHUB_WORKSPACE/published/x86_64:/repository:ro" \
             --volume "$GITHUB_WORKSPACE/source:/workspace:ro" \
-            "$BUILDER_IMAGE" \
+            "$builder_image" \
             bash -c 'bash /workspace/scripts/verify-repository.sh /repository'
 
       - name: Check the repository URL is configured

@@ -45,8 +45,11 @@ jobs:
         env:
           REQUESTED_PACKAGES: ${{ inputs.packages }}
           SYNC_FAILURES_FILE: ${{ runner.temp }}/sync-failures.tsv
+          IMAGE_REPOSITORY: ${{ github.repository_owner }}/pkgbuild-builder
         run: |
           set -Eeuo pipefail
+          # Docker image references must be lowercase; the owner casing is not.
+          builder_image="ghcr.io/${IMAGE_REPOSITORY,,}:latest"
           selection="${REQUESTED_PACKAGES:-all}"
           args=()
           if [[ "$selection" != "all" ]]; then
@@ -65,7 +68,7 @@ jobs:
             --volume "$GITHUB_WORKSPACE:/workspace" \
             --volume "$RUNNER_TEMP:/runner-temp" \
             --env SYNC_FAILURES_FILE=/runner-temp/sync-failures.tsv \
-            ghcr.io/${{ github.repository_owner }}/pkgbuild-builder:latest \
+            "$builder_image" \
             bash /workspace/scripts/sync-aur-packages.sh "${args[@]}" || rc=$?
           if (( rc == 3 )); then
             {

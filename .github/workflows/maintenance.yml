@@ -135,7 +135,9 @@ jobs:
       # `toomanyrequests: You have reached your unauthenticated pull rate limit`
       # （run 37989749507，docker run exit 125）——检测器本身没有任何问题，
       # 却让每天一次的 soname 复查整个 job 变红。
-      BUILDER_IMAGE: ghcr.io/${{ github.repository_owner }}/pkgbuild-builder:latest
+      # See build.yml: the owner casing is normalized where the image is
+      # actually used, because Docker image references must be lowercase.
+      BUILDER_IMAGE_REPOSITORY: ${{ github.repository_owner }}/pkgbuild-builder:latest
     outputs:
       stale: ${{ steps.dispatch.outputs.stale }}
     steps:

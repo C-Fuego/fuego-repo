@@ -37,9 +37,13 @@ jobs:
       - name: Pull CachyOS builder
         id: builder
         shell: bash
+        env:
+          # Docker image references must be lowercase; GitHub keeps the owner's
+          # original casing, so the reference is built here.
+          IMAGE_REPOSITORY: ${{ github.repository_owner }}/pkgbuild-builder
         run: |
           set -Eeuo pipefail
-          image="ghcr.io/${{ github.repository_owner }}/pkgbuild-builder:latest"
+          image="ghcr.io/${IMAGE_REPOSITORY,,}:latest"
           if ! docker pull "$image"; then
             docker build --file .github/builder/Dockerfile --tag pkgbuild-builder:upstream .
             image=pkgbuild-builder:upstream

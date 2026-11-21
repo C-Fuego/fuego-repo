@@ -88,14 +88,18 @@ runs:
       env:
         PACKAGE_NAME: ${{ inputs.package_name }}
         FLAVOR: ${{ inputs.flavor }}
-        OWNER: ${{ github.repository_owner }}
+        IMAGE_REPOSITORY: ${{ github.repository_owner }}/pkgbuild-builder
       run: |
         set -Eeuo pipefail
+        # Docker rejects uppercase in an image reference and GitHub preserves
+        # the owner's original casing, so an owner such as C-Fuego has to be
+        # normalised here rather than interpolated into the reference.
+        image_repository="ghcr.io/${IMAGE_REPOSITORY,,}"
         if [[ "$PACKAGE_NAME" == *cuda* || "$PACKAGE_NAME" == "ffmpeg-full" || "$FLAVOR" == cuda ]]; then
-          image="ghcr.io/${OWNER}/pkgbuild-builder:cuda"
+          image="${image_repository}:cuda"
           build_arg=1
         else
-          image="ghcr.io/${OWNER}/pkgbuild-builder:latest"
+          image="${image_repository}:latest"
           build_arg=0
         fi
         if timeout --signal=TERM --kill-after=30s 8m docker pull "$image"; then
