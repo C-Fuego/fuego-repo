@@ -1,0 +1,29 @@
+# Maintainer: C-Fuego
+pkgname=zpipes
+pkgver=0.3.0
+pkgrel=1
+pkgdesc="pipes.sh clone written in Zig"
+arch=('x86_64')
+options=('!debug' '!strip')
+url="https://github.com/C-Fuego/Rezig"
+license=('MIT')
+depends=()
+makedepends=('zig')
+_commit=HEAD
+# 上游目录名为 zpipes，二进制名为 zpipes；包名沿用 zpipes。
+source=("$pkgname::git+https://github.com/C-Fuego/Rezig#commit=$_commit")
+sha256sums=('SKIP')
+
+
+build() {
+  cd "$srcdir/$pkgname/zpipes/src"
+  ZIG_GLOBAL_CACHE_DIR="$srcdir/.zig-global" zig build -Doptimize=ReleaseFast -Dcpu=x86_64_v3 \
+    --prefix "$srcdir/out" --cache-dir "$srcdir/.zig-cache"
+}
+
+package() {
+  cd "$srcdir/$pkgname/zpipes/src"
+  install -Dm755 "$srcdir/out/bin/zpipes" "$pkgdir/usr/bin/zpipes"
+  [ -f LICENSE ] && install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  return 0
+}

@@ -23,3 +23,18 @@
 # dsh-desktop-linux-update.yml re-pins pkgver (it is embedded in the asset
 # name), sha256sums and .SRCINFO from the newest release that ships that asset.
 dsh-desktop-linux workflow .github/workflows/dsh-desktop-linux-update.yml
+
+# --- Packages carried over from the personal frepo repository. ---
+# None of them mirrors an AUR package, so none has .aur-url.  Every entry
+# states who refreshes it; the Rezig ones are pinned by commit on purpose and
+# wait for a deliberate bump (see each PKGBUILD's _commit).
+folia manual Tracks TeChuouo520/Folia-rust tags; bump pkgver to the new tag by hand (the source URL derives from it).
+zbonsai manual Built from C-Fuego/Rezig, pinned by commit; bump _commit and pkgrel together when upstream moves.
+zclock manual Built from C-Fuego/Rezig, pinned by commit; bump _commit and pkgrel together when upstream moves.
+zeraora manual Built from C-Fuego/Rezig, pinned by commit; bump _commit and pkgrel together when upstream moves.
+ziglet manual Built from C-Fuego/Rezig, pinned by commit; bump _commit and pkgrel together when upstream moves.
+zlolcat manual Built from C-Fuego/Rezig, pinned by commit; bump _commit and pkgrel together when upstream moves.
+zmatrix manual Built from C-Fuego/Rezig, pinned by commit; bump _commit and pkgrel together when upstream moves.
+zpipes manual Built from C-Fuego/Rezig, pinned by commit; bump _commit and pkgrel together when upstream moves.
+shorin-contrib-git manual pkgver() counts upstream commits; a sync would only rewrite a version makepkg derives anyway.
+shorin-pac-git manual pkgver() counts upstream commits; a sync would only rewrite a version makepkg derives anyway.

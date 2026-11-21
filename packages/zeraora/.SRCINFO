@@ -1,0 +1,14 @@
+pkgbase = zeraora
+	pkgdesc = Print pokemon sprites in your terminal
+	pkgver = 0.3.0
+	pkgrel = 1
+	url = https://github.com/C-Fuego/Rezig
+	arch = x86_64
+	license = GPL-3.0-only
+	makedepends = zig
+	options = !debug
+	options = !strip
+	source = zeraora::git+https://github.com/C-Fuego/Rezig#commit=HEAD
+	sha256sums = SKIP
+
+pkgname = zeraora

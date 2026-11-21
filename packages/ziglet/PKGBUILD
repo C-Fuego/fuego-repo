@@ -1,0 +1,33 @@
+# Maintainer: C-Fuego
+pkgname=ziglet
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="FIGlet-compatible text renderer with TOIlet filters and exports"
+arch=('x86_64')
+options=('!debug' '!strip')
+url="https://github.com/C-Fuego/Rezig"
+license=('MIT')
+depends=('zlib')
+makedepends=('zig')
+_commit=HEAD
+source=("$pkgname::git+https://github.com/C-Fuego/Rezig#commit=$_commit")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/$pkgname/ziglet/src"
+  ZIG_GLOBAL_CACHE_DIR="$srcdir/.zig-global" zig build -Doptimize=ReleaseFast -Dcpu=x86_64_v3 \
+    --prefix "$srcdir/out" --cache-dir "$srcdir/.zig-cache"
+}
+
+package() {
+  cd "$srcdir/$pkgname/ziglet/src"
+  install -Dm755 "$srcdir/out/bin/ziglet" "$pkgdir/usr/bin/ziglet"
+  install -Dm755 "$srcdir/out/bin/zfiglist" "$pkgdir/usr/bin/zfiglist"
+  install -Dm755 "$srcdir/out/bin/zshowfigfonts" "$pkgdir/usr/bin/zshowfigfonts"
+  install -Dm755 "$srcdir/out/bin/zchkfont" "$pkgdir/usr/bin/zchkfont"
+  # 随包带 FIGlet/TOIlet 字体，系统没装 figlet/toilet 也能用
+  install -d "$pkgdir/usr/share/ziglet/fonts"
+  find textfig/fonts -maxdepth 1 -type f \
+    \( -name '*.flf' -o -name '*.flc' -o -name '*.tlf' \) \
+    -exec cp {} "$pkgdir/usr/share/ziglet/fonts/" \;
+}

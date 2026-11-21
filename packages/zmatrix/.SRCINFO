@@ -1,0 +1,14 @@
+pkgbase = zmatrix
+	pkgdesc = cmatrix clone written in Zig
+	pkgver = 1.1.0
+	pkgrel = 1
+	url = https://github.com/C-Fuego/Rezig
+	arch = x86_64
+	license = MIT
+	makedepends = zig
+	options = !debug
+	options = !strip
+	source = zmatrix::git+https://github.com/C-Fuego/Rezig#commit=HEAD
+	sha256sums = SKIP
+
+pkgname = zmatrix

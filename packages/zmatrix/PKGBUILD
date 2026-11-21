@@ -1,0 +1,29 @@
+# Maintainer: C-Fuego
+# 本地编译包（x86_64-v3 优化）：source 为 Rezig monorepo，makepkg 时编译。
+pkgname=zmatrix
+pkgver=1.1.0
+pkgrel=1
+pkgdesc="cmatrix clone written in Zig"
+arch=('x86_64')
+options=('!debug' '!strip')
+url="https://github.com/C-Fuego/Rezig"
+license=('MIT')
+depends=()
+makedepends=('zig')
+_commit=HEAD   # 换成固定 commit/tag 可复现
+source=("$pkgname::git+https://github.com/C-Fuego/Rezig#commit=$_commit")
+sha256sums=('SKIP')
+
+
+build() {
+  cd "$srcdir/zmatrix/zmatrix/src"
+  ZIG_GLOBAL_CACHE_DIR="$srcdir/.zig-global" zig build -Doptimize=ReleaseFast -Dcpu=x86_64_v3 \
+    --prefix "$srcdir/out" --cache-dir "$srcdir/.zig-cache"
+}
+
+package() {
+  cd "$srcdir/zmatrix/zmatrix/src"
+  install -Dm755 "$srcdir/out/bin/zmatrix" "$pkgdir/usr/bin/zmatrix"
+  [ -f LICENSE ] && install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  return 0
+}

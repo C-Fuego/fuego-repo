@@ -1,0 +1,27 @@
+# Maintainer: C-Fuego
+pkgname=zlolcat
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="lolcat clone written in Zig"
+arch=('x86_64')
+options=('!debug' '!strip')
+url="https://github.com/C-Fuego/Rezig"
+license=('MIT')
+depends=()
+makedepends=('zig')
+_commit=HEAD
+source=("$pkgname::git+https://github.com/C-Fuego/Rezig#commit=$_commit")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/zlolcat/zlolcat/src"
+  ZIG_GLOBAL_CACHE_DIR="$srcdir/.zig-global" zig build -Doptimize=ReleaseFast -Dcpu=x86_64_v3 \
+    --prefix "$srcdir/out" --cache-dir "$srcdir/.zig-cache"
+}
+
+package() {
+  cd "$srcdir/zlolcat/zlolcat/src"
+  install -Dm755 "$srcdir/out/bin/zlolcat" "$pkgdir/usr/bin/zlolcat"
+  [ -f LICENSE ] && install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  return 0
+}

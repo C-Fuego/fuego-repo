@@ -1,0 +1,15 @@
+pkgbase = ziglet
+	pkgdesc = FIGlet-compatible text renderer with TOIlet filters and exports
+	pkgver = 1.0.0
+	pkgrel = 1
+	url = https://github.com/C-Fuego/Rezig
+	arch = x86_64
+	license = MIT
+	makedepends = zig
+	depends = zlib
+	options = !debug
+	options = !strip
+	source = ziglet::git+https://github.com/C-Fuego/Rezig#commit=HEAD
+	sha256sums = SKIP
+
+pkgname = ziglet

@@ -1,0 +1,14 @@
+pkgbase = zpipes
+	pkgdesc = pipes.sh clone written in Zig
+	pkgver = 0.3.0
+	pkgrel = 1
+	url = https://github.com/C-Fuego/Rezig
+	arch = x86_64
+	license = MIT
+	makedepends = zig
+	options = !debug
+	options = !strip
+	source = zpipes::git+https://github.com/C-Fuego/Rezig#commit=HEAD
+	sha256sums = SKIP
+
+pkgname = zpipes
