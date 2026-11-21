@@ -59,21 +59,31 @@ command -v aws >/dev/null 2>&1 || {
     exit 1
 }
 
-# The listing is the existence proof described in the header. `aws s3 ls`
-# exits 0 and prints nothing for an empty prefix, and non-zero when the
-# credentials or the network are wrong.
-# Diagnostics are captured to files rather than to a variable: a command
-# substitution that only holds stdout is how a real CLI error turns into a
-# blank "failed (attempt 1):" line with no explanation, which is exactly the
-# state that made the first R2 publish impossible to debug.
+# The listing is the existence proof described in the header.
+#
+# It is `s3api list-objects-v2`, not `s3 ls`: with a trailing slash `s3 ls`
+# sends a delimiter and aws-cli exits non-zero when the answer is empty, so an
+# empty bucket and a broken credential both come back as "command failed".
+# `list-objects-v2` writes `(empty)` and exits 0 for a real empty result, and
+# keeps a genuine failure a failure.
+#
+# Diagnostics go to files rather than to a variable: a command substitution
+# that only holds stdout is how a real CLI error turns into a blank
+# "failed (attempt 1):" line, which is the state that made the first R2
+# publish impossible to debug.
 listing_file="$(mktemp)"
 error_file="$(mktemp)"
 trap 'rm -f "$listing_file" "$error_file"' EXIT
 for attempt in 1 2 3; do
-    # `timeout` runs a program, not a shell function: the full command is
-    # expanded here so the 120s guard really applies to the CLI.
-    if timeout 120 aws --endpoint-url "${endpoint%/}" s3 ls \
-        "s3://${bucket}/${prefix}/" >"$listing_file" 2>"$error_file"; then
+    if timeout 120 aws --endpoint-url "${endpoint%/}" s3api list-objects-v2 \
+        --bucket "$bucket" --prefix "${prefix}/" \
+        --query 'Contents[].[Key]' --output text \
+        >"$listing_file" 2>"$error_file"; then
+        listing="$(cat "$listing_file")"
+        # The CLI prints the literal word None when there are no objects.
+        if [[ "$listing" == "None" ]]; then
+            listing=""
+        fi
         break
     fi
     printf 'Listing s3://%s/%s/ failed (attempt %d):\n' \
@@ -88,9 +98,8 @@ for attempt in 1 2 3; do
         exit 1
     fi
     sleep $(( attempt * 5 ))
+    listing=""
 done
-
-listing="$(cat "$listing_file")"
 
 if [[ -z "$listing" ]]; then
     printf 's3://%s/%s/ is empty; first publish starts with an empty repository.\n' \
@@ -98,7 +107,10 @@ if [[ -z "$listing" ]]; then
     exit 0
 fi
 
-if ! grep -qE "[[:space:]]${repository_name}\\.(db|files)([[:space:]]|$)" <<< "$listing"; then
+# `list-objects-v2` yields keys relative to the bucket root, so the database
+# appears as "${prefix}/${name}.db" -- the separator to match is the slash, not
+# the leading whitespace `s3 ls` would have produced.
+if ! grep -qE "(^|/)${repository_name}\.(db|files)$" <<< "$listing"; then
     printf 's3://%s/%s/ has objects but no %s database:\n%s\n' \
         "$bucket" "$prefix" "$repository_name" "$listing" >&2
     printf 'Refusing to publish over a prefix whose database is missing.\n' >&2
