@@ -57,8 +57,25 @@ readonly bucket="${R2_BUCKET}"
 readonly endpoint="${R2_ENDPOINT%/}"
 readonly prefix="${R2_PREFIX:-x86_64-v3}"
 
+# `AWS_ENDPOINT_URL_S3` only exists in aws-cli 2.13 and later; the GitHub
+# runner image and distro packages have shipped older v2 builds, and on those
+# the variable is silently ignored -- the CLI then talks to Amazon S3, where
+# these R2 keys mean nothing. Every call therefore passes --endpoint-url
+# explicitly, which works on v1 and v2 alike. The env var is still set for
+# any nested invocation.
 export AWS_ENDPOINT_URL_S3="$endpoint"
 export AWS_DEFAULT_REGION="auto"
+
+aws_s3() {
+    aws --endpoint-url "$endpoint" s3 "$@"
+}
+
+aws_s3api() {
+    aws --endpoint-url "$endpoint" s3api "$@"
+}
+
+aws_version="$(aws --version 2>&1 || true)"
+printf 'AWS CLI: %s\n' "${aws_version:-unknown}"
 export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
 export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
 
@@ -137,7 +154,7 @@ while IFS=$'\t' read -r size key; do
     [[ -n "$key" ]] || continue
     remote_size["${key##*/}"]="$size"
 done < <(
-    aws s3api list-objects-v2 \
+    aws_s3api list-objects-v2 \
         --bucket "$bucket" --prefix "${prefix}/" \
         --query 'Contents[].[Size,Key]' --output text 2>/dev/null || true
 )
@@ -152,7 +169,7 @@ for file in "${payload[@]}"; do
     name="$(basename "$file")"
     local_sha256="$(sha256_of "$file")"
     if [[ -n "${remote_size[$name]:-}" ]]; then
-        stored="$(aws s3api head-object \
+        stored="$(aws_s3api head-object \
             --bucket "$bucket" --key "${prefix}/${name}" \
             --query 'Metadata.sha256' --output text 2>/dev/null || true)"
         if [[ "$stored" == "$local_sha256" ]]; then
@@ -177,7 +194,7 @@ if (( ${#pending[@]} > 0 )); then
     # instead of guessing from the size.
     for file in "${pending[@]}"; do
         name="$(basename "$file")"
-        aws s3 cp --only-show-errors --no-progress \
+        aws_s3 cp --only-show-errors --no-progress \
             --cache-control 'public, max-age=31536000, immutable' \
             --metadata "sha256=${remote_sha256[$name]}" \
             "$file" "s3://${bucket}/${prefix}/${name}"
@@ -188,7 +205,7 @@ fi
 # uploaded yet. The database itself is never cached.
 printf 'Uploading repository metadata\n'
 for file in "${metadata[@]}"; do
-    aws s3 cp --only-show-errors --no-progress \
+    aws_s3 cp --only-show-errors --no-progress \
         --cache-control 'no-cache, no-store, must-revalidate' \
         "$file" "s3://${bucket}/${prefix}/${file}"
 done
@@ -220,7 +237,7 @@ for name in "${!remote_size[@]}"; do
     [[ "$name" == *.pkg.tar.zst ]] || continue
     if ! grep -qxF -- "$name" "$referenced"; then
         printf 'Deleting unreferenced package: %s\n' "$name"
-        aws s3 rm --only-show-errors "s3://${bucket}/${prefix}/${name}"
+        aws_s3 rm --only-show-errors "s3://${bucket}/${prefix}/${name}"
         deleted=$(( deleted + 1 ))
     fi
 done
@@ -232,7 +249,7 @@ fi
 printf 'Verifying the published database\n'
 verify_dir="$(mktemp -d)"
 trap 'rm -rf "$verify_dir"; rm -f "$referenced"' EXIT
-aws s3 cp --only-show-errors --no-progress \
+aws_s3 cp --only-show-errors --no-progress \
     "s3://${bucket}/${prefix}/${repository_name}.db" \
     "${verify_dir}/${repository_name}.db"
 if ! cmp -s "${verify_dir}/${repository_name}.db" "${repository_name}.db"; then

@@ -42,10 +42,17 @@ if [[ -z "$bucket" || -z "$endpoint" ]]; then
     exit 0
 fi
 
+# `AWS_ENDPOINT_URL_S3` only exists in aws-cli 2.13 and later; older builds
+# ignore it and then talk to Amazon S3, where these keys mean nothing. The
+# failure looks like "the bucket is empty", which this script is specifically
+# built to never mistake for a real answer -- so pass --endpoint-url explicitly
+# instead of relying on the variable.
 export AWS_ENDPOINT_URL_S3="${endpoint%/}"
 export AWS_DEFAULT_REGION="auto"
 export AWS_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required}"
 export AWS_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required}"
+
+printf 'AWS CLI: %s\n' "$(aws --version 2>&1 || echo unknown)"
 
 command -v aws >/dev/null 2>&1 || {
     printf 'The AWS CLI is required to fetch the published repository.\n' >&2
@@ -57,7 +64,9 @@ command -v aws >/dev/null 2>&1 || {
 # credentials or the network are wrong.
 listing=""
 for attempt in 1 2 3; do
-    if listing="$(timeout 120 aws s3 ls "s3://${bucket}/${prefix}/" 2>&1)"; then
+    # `timeout` runs a program, not a shell function: expand the wrapper here
+    # so the 120s guard really applies to the CLI, not to a failed exec.
+    if listing="$(timeout 120 aws --endpoint-url "${endpoint%/}" s3 ls "s3://${bucket}/${prefix}/" 2>&1)"; then
         break
     fi
     printf 'Listing s3://%s/%s/ failed (attempt %d):\n%s\n' \
@@ -86,7 +95,7 @@ printf 'Downloading the published repository from s3://%s/%s/\n' "$bucket" "$pre
 # Only the metadata and packages are needed; the ABI manifest and keyring are
 # small and harmless to fetch too, and keeping the directory identical to the
 # bucket means the republished database refers to files that are already there.
-timeout 1800 aws s3 cp --only-show-errors --no-progress --recursive \
+timeout 1800 aws --endpoint-url "${endpoint%/}" s3 cp --only-show-errors --no-progress --recursive \
     "s3://${bucket}/${prefix}/" "$state_dir/"
 
 find "$state_dir" -maxdepth 1 -type f -printf '%f %k KiB\n' | sort | tail -20
