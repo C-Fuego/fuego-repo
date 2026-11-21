@@ -13,9 +13,9 @@ name: Track dsh-desktop-linux releases
 # and publish it. No pull request, and build.yml's publish gates still apply.
 on:
   schedule:
-    # Every 2 hours, offset from the other main-branch updaters (filee at :13,
-    # sing-box-ebpf at :37, refresh-rule-sets at :40); upstream releases are
-    # infrequent, so almost every run stops at changed=false after one API call.
+    # Every 2 hours, offset from the other main-branch updaters (:17, :23, :41);
+    # upstream releases are infrequent, so almost every run stops at
+    # changed=false after one API call.
     - cron: "53 */2 * * *"
   workflow_dispatch:
 
@@ -24,8 +24,8 @@ permissions:
   packages: read
 
 concurrency:
-  # Shared with sync.yml, filee-update.yml and the other updaters: all of
-  # them commit to main and must not race into non-fast-forward pushes.
+  # Shared with sync.yml and the other updaters: all of them commit to main
+  # and must not race into non-fast-forward pushes.
   group: main-branch-updates
   cancel-in-progress: false
 
