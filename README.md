@@ -131,7 +131,7 @@ tag、资产状态与 GitHub 计算的 sha256 digest，有新版时同时更新 
 
 ```bash
 git clone --single-branch --branch main \
-  https://github.com/emoeem/pkgbuild.git \
+  https://github.com/C-Fuego/pkgbuild.git \
   ~/pkgbuild-source
 cd ~/pkgbuild-source
 ```
@@ -179,7 +179,7 @@ https://aur.archlinux.org/package-name.git
 数据库。只创建本地提交时使用 `--no-push`。
 
 仓库删除不会自动卸载电脑上已经安装的软件包。删除发布完成后，`sudo pacman -Sy`
-刷新数据库，`pacman -Sl emoeem` 即可确认该包已从仓库消失。
+刷新数据库，`pacman -Sl fuego-repo` 即可确认该包已从仓库消失。
 
 ## fzf 管理界面
 
@@ -199,39 +199,48 @@ sudo pacman -S fzf github-cli
 
 每个包会生成独立的私有 Actions Artifact。Artifact 使用 tar 作为传输
 容器，以便保留 Arch `epoch` 产生的冒号文件名；发布任务解包后，原始软件包
-文件名和内容不会发生变化。所有成功产物随后被合并到 `repo` 分支的
-`x86_64/`：
+文件名和内容不会发生变化。所有成功产物随后被合并进 `published/x86_64/`
+并上传到 R2 桶的 `x86_64/` 前缀：
 
 - `*.pkg.tar.zst`
-- `emoeem.db` 与 `emoeem.db.tar.zst`
-- `emoeem.files` 与 `emoeem.files.tar.zst`
+- `fuego-repo.db` 与 `fuego-repo.db.tar.zst`
+- `fuego-repo.files` 与 `fuego-repo.files.tar.zst`
 - `SHA256SUMS`
-- `emoeem.conf`
-- `emoeem-abi-manifest.txt`（每个已发布包的版本与 ELF `NEEDED` 清单，
+- `fuego-repo.conf`
+- `fuego-repo-abi-manifest.txt`（每个已发布包的版本与 ELF `NEEDED` 清单，
   供依赖/SONAME 漂移检测快速比对，无需下载整个仓库）
 
-更新数据库时会删除同一个包的旧版本。`repo` 分支每次使用 amend 和
-force-with-lease 更新，从而避免 Git 历史长期保存所有旧二进制包。
+更新数据库时会删除同一个包的旧版本，并删除数据库不再引用的包文件：
+R2 里只保留当前数据库能解析到的那些 `.pkg.tar.zst`，不会有历史版本堆积。
+包文件一旦上传就不再覆盖（内容由 `x-amz-meta-sha256` 校验，同名同大小但
+内容不同会被检出并重传），数据库每次都是新对象。
 
 ## 作为 pacman 仓库使用
 
-GitHub 私有仓库不能直接作为匿名 HTTP pacman Server。创建普通用户可写
-的目录，再使用已有的 HTTPS 凭据克隆私有 `repo` 分支：
-
-```bash
-sudo install -d -o "$USER" -g "$(id -gn)" /var/lib/emoeem-repo
-git clone --depth 1 --branch repo \
-  https://github.com/emoeem/pkgbuild.git \
-  /var/lib/emoeem-repo
-```
-
-将下面内容加入 `/etc/pacman.conf`：
+仓库发布到 Cloudflare R2，由一个自定义域直连桶对外提供：
 
 ```ini
-[emoeem]
-SigLevel = Never
-Server = file:///var/lib/emoeem-repo/x86_64
+[fuego-repo]
+SigLevel = Required DatabaseRequired
+Server = https://ignacio.dpdns.org/x86_64
 ```
+
+`SigLevel` 里的 `Required` 要求仓库签名 key 已经通过 keyring 包装进
+`/etc/pacman.d/gnupg`，`DatabaseRequired` 要求数据库本身带 `.sig`。两样都由
+`build.yml` 的签名步骤产出；如果不启用签名，把这一行换成 `SigLevel = Never`
+（此时 `Server` 不变）。
+
+桶的布局就是 pacman 的布局，一个前缀一个架构：
+
+```
+x86_64/fuego-repo.db          数据库（永不缓存）
+x86_64/fuego-repo.db.sig
+x86_64/fuego-repo.files
+x86_64/<pkg>-<ver>-<rel>-x86_64.pkg.tar.zst   （一年不可变缓存）
+```
+
+发布顺序是「先包后库」：包文件先传，数据库最后传，所以客户端任何时候读到的
+数据库都指向已经存在的文件。包文件永不覆盖，数据库永不缓存。
 
 ## SONAME 漂移排查
 
@@ -257,7 +266,7 @@ pacman -Ql openapv | grep liboapv
 grep -iE 'openapv|liboapv' /var/log/pacman.log | tail
 
 # 4. 哪些已安装的包需要重建（AUR + 私人仓库）
-LC_ALL=C checkrebuild -i emoeem
+LC_ALL=C checkrebuild -i fuego-repo
 
 # 5. 重建：推送到 main（只重建变化的包及其依赖者），或手动触发
 gh workflow run build.yml -f packages=<pkg> -f make_jobs=4 [-f bump_pkgrel=true]
@@ -268,10 +277,10 @@ gh workflow run build.yml -f packages=<pkg> -f make_jobs=4 [-f bump_pkgrel=true]
 - 它内部用 `LANG=C stat --printf "%F"` 识别可执行文件，但 `LC_MESSAGES`
   的优先级高于 `LANG`，中文环境下 `%F` 输出「一般文件」而不是
   `regular file`，于是它扫不到任何文件，永远报告「没有需要重建的包」。
-  实测：`checkrebuild -i emoeem` 无输出，写成 `LC_ALL=C checkrebuild -i emoeem`
-  后立刻列出 `emoeem  ffmpeg-full`。手动调用必须带 `LC_ALL=C`。
+  实测：`checkrebuild -i fuego-repo` 无输出，写成 `LC_ALL=C checkrebuild -i fuego-repo`
+  后立刻列出 `fuego-repo  ffmpeg-full`。手动调用必须带 `LC_ALL=C`。
 - `checkrebuild` 默认只覆盖 AUR（foreign）包和 `file://` 仓库，私人仓库
-  需要显式 `-i emoeem`。
+  需要显式 `-i fuego-repo`。
 
 安装仓库自带的 hook 覆盖版本，`pacman -Syu` 结束时会直接列出需要重建的包：
 
@@ -311,51 +320,13 @@ SONAME），对象既有当前 `.SRCINFO` 里的依赖，也有 `.rebuild-on` �
 `openapv`、CachyOS 的 `openvino`），pacman 无法阻止不兼容升级，只能依赖上面的
 自动检测及时重建。openvino `2026.4.0` → `2026.4.1` 把 `libopenvino_c.so.2640`
 换成 `.2641` 就是这样打断了 `ffmpeg-full`：`openvino` 在 depends 里是普通依赖，
-pacman 拦不住；本地 hook 当场报了 `emoeem  ffmpeg-full`，但真正的重建要等检测器
+pacman 拦不住；本地 hook 当场报了 `fuego-repo  ffmpeg-full`，但真正的重建要等检测器
 发现——这就是把 soname 扫描从「每天一次」提到「每两小时一次」的原因。
 
-## 客户端配置（install.sh）
+## 客户端配置
 
-从 `main` 源码目录执行一次：
-
-```bash
-sudo ./client/install.sh
-```
-
-脚本以 root 运行，完成四步：
-
-1. 匿名 HTTPS 预检 GitHub Release 上的 `emoeem.db` 可达（可设 `GITHUB_PROXY`
-   环境变量走加速通道，通道失败自动回退直连）。
-2. 尝试下载仓库签名公钥并导入本地信任；只有确认密钥不存在（404，仓库未
-   启用签名）才回退 `SigLevel = Never`，网络失败会直接中止而不静默关校验。
-3. 备份原 `/etc/pacman.conf` 为 `/etc/pacman.conf.emoeem-backup`。
-4. 写入由标记块管理的 `[emoeem]` 仓库段（重复运行会更新该段），并执行
-   `pacman -Sy`。
-
-之后的仓库更新就是普通 pacman 操作：
-
-```bash
-sudo pacman -Syu
-```
-
-pacman 直接从 GitHub Release 下载 `emoeem.db` 与软件包，本机不需要保留
-`repo` 分支克隆。如果把 `repo/x86_64` 同步到自己的私有 HTTP 服务器，只需
-把 `Server` 改成服务器地址，就可以像普通 Arch 仓库一样使用。
-
-## 仓库签名
-
-默认生成未签名的私人仓库。需要包和数据库签名时，在 GitHub 仓库
-Actions Secrets 中设置：
-
-- `REPOSITORY_PRIVATE_KEY`：ASCII armored GPG 私钥。
-- `REPOSITORY_KEY_PASSPHRASE`：私钥密码；无密码时留空。
-
-工作流会签名每个软件包、数据库和 files 数据库，并将公钥导出为
-`x86_64/emoeem-key.asc`。客户端导入并本地信任该密钥后，可改用：
-
-```ini
-SigLevel = Required DatabaseRequired
-```
+`client/install.sh` 上游脚本针对 GitHub Release 发布方式，迁移到 R2 后已
+不再适用，本 fork 没有携带它。手动配置见上文「作为 pacman 仓库使用」。
 
 建议为 CI 单独创建仅用于仓库签名的 GPG 子密钥。
 

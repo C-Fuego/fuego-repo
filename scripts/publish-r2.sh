@@ -110,11 +110,24 @@ if (( ${#payload[@]} == 0 )); then
     exit 1
 fi
 
-# Content hashes already in the bucket, so an unchanged package is not
-# uploaded again. R2 returns the SHA-256 of the object in ETag for
-# non-multipart uploads; multipart uploads (large packages) use a different
-# ETag, which is why this compares sizes as a cheap pre-filter and only trusts
-# an ETag when it looks like a plain MD5/SHA digest.
+# Content hashes, not sizes. A package filename embeds the version, pkgrel and
+# architecture but NOT the build: rebuilding the same PKGBUILD without bumping
+# pkgrel produces the same filename, and a size comparison would then skip the
+# upload whenever the new archive happened to compress to the same length --
+# silently leaving the old bytes in the bucket while the log says "unchanged".
+# That is the same class of failure as a drift check that cannot compare and
+# reports no drift, so the decision is made on the SHA-256 the object carries
+# in its own metadata.
+#
+# The hash is written as x-amz-meta-sha256 on upload and read back with a HEAD
+# request. Objects published before this scheme have no such metadata; they
+# are uploaded once and then carry it, so the cost is paid a single time.
+sha256_of() {
+    local file="$1" output
+    output="$(sha256sum -- "$file")"
+    printf '%s' "${output%% *}"
+}
+
 printf 'Listing existing objects under %s/\n' "$prefix"
 declare -A remote_size=()
 while IFS=$'\t' read -r size key; do
@@ -126,32 +139,46 @@ done < <(
         --query 'Contents[].[Size,Key]' --output text 2>/dev/null || true
 )
 
+# One HEAD per existing package: the object is small in metadata and the
+# request is cheap, and it is the only way to tell "same name, different
+# bytes" from "same object".
+declare -A remote_sha256=()
 pending=()
 skipped=0
 for file in "${payload[@]}"; do
     name="$(basename "$file")"
-    local_size="$(stat -c '%s' "$file")"
-    if [[ "${remote_size[$name]:-}" == "$local_size" ]]; then
-        # Same size is not proof of same content, but every package filename
-        # embeds the version, architecture and pkgrel, so an identical
-        # filename with an identical size is the same build. Re-uploading it
-        # would be the only way to be certain, at the cost of the whole
-        # repository every run.
-        skipped=$(( skipped + 1 ))
-        continue
+    local_sha256="$(sha256_of "$file")"
+    if [[ -n "${remote_size[$name]:-}" ]]; then
+        stored="$(aws s3api head-object \
+            --bucket "$bucket" --key "${prefix}/${name}" \
+            --query 'Metadata.sha256' --output text 2>/dev/null || true)"
+        if [[ "$stored" == "$local_sha256" ]]; then
+            remote_sha256["$name"]="$local_sha256"
+            skipped=$(( skipped + 1 ))
+            continue
+        fi
+        if [[ -n "$stored" && "$stored" != "None" ]]; then
+            printf 'Package content changed but the name is the same: %s\n' "$name"
+            printf '  bucket: %s\n  built:  %s\n' "$stored" "$local_sha256"
+            printf 'This means the PKGBUILD was rebuilt without a pkgrel bump.\n' >&2
+        fi
     fi
     pending+=("$file")
+    remote_sha256["$name"]="$local_sha256"
 done
 
 if (( ${#pending[@]} > 0 )); then
     printf 'Uploading %d package file(s)\n' "${#pending[@]}"
     # Package files never change once named, so they are cached for a year.
-    # The upload is parallel because a first publish is several GiB.
-    aws s3 cp --only-show-errors --recursive \
-        --exclude '*' --include '*.pkg.tar.zst' \
-        --cache-control 'public, max-age=31536000, immutable' \
-        --no-progress \
-        . "s3://${bucket}/${prefix}/"
+    # Each upload carries its SHA-256 so the next publish can compare content
+    # instead of guessing from the size.
+    for file in "${pending[@]}"; do
+        name="$(basename "$file")"
+        aws s3 cp --only-show-errors --no-progress \
+            --cache-control 'public, max-age=31536000, immutable' \
+            --metadata "sha256=${remote_sha256[$name]}" \
+            "$file" "s3://${bucket}/${prefix}/${name}"
+    done
 fi
 
 # Database last: a client must never see a database naming a file that is not
