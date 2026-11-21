@@ -5,21 +5,18 @@ package_name="${PACKAGE_NAME:?PACKAGE_NAME is required}"
 new_dir="${1:?usage: test-upgrade-path.sh NEW_ARTIFACT_DIR OLD_REPOSITORY_DIR CACHE_DIR}"
 old_dir="${2:?}"
 cache_dir="${3:?}"
-case "$package_name" in linuxqq-clipsync-git|sing-box-ebpf) ;; *) echo "Upgrade dry-run is scoped to transition-sensitive linuxqq-clipsync-git and sing-box-ebpf; skipping $package_name."; exit 0 ;; esac
+case "$package_name" in linuxqq-wayland-fix-git|folia) ;; *) echo "Upgrade dry-run is scoped to linuxqq-wayland-fix-git (AUR-synced VCS) and folia (tag-tracking crate); skipping $package_name."; exit 0 ;; esac
 new_pkg="$(find "$new_dir" -maxdepth 1 -type f -name '*.pkg.tar.zst' -print -quit)"
 [[ -n "$new_pkg" ]] || { echo "No newly built package in $new_dir" >&2; exit 2; }
 new_name="$(bsdtar -xOf "$new_pkg" .PKGINFO | awk -F ' = ' '$1 == "pkgname" {print $2; exit}')"
 [[ "$new_name" == "$package_name" ]] || { echo "Expected $package_name, got $new_name" >&2; exit 2; }
-# sing-box-ebpf 的旧形态是上游包名(转换路径):在发布仓库里按 "sing-box-*"
-# 找旧制品会误匹配 sing-box-ebpf 自己;该分支不用旧制品,只有同名升级分支
-# (linuxqq-clipsync-git)才需要。
-old_pkg=""
-if [[ "$package_name" != sing-box-ebpf ]]; then
-    old_pkg="$(find "$old_dir" -maxdepth 1 -type f -name "${package_name}-*.pkg.tar.zst" -print -quit)"
-    if [[ -z "$old_pkg" ]]; then
-        echo "UPGRADE_PATH=UNVERIFIABLE: no previous $package_name package in the published repository; no upgrade success is claimed." >&2
-        exit 0
-    fi
+# Both scoped packages keep their name across publishes, so the previous
+# artifact is simply found by name. A first publish legitimately has none and
+# reports UNVERIFIABLE instead of failing.
+old_pkg="$(find "$old_dir" -maxdepth 1 -type f -name "${package_name}-*.pkg.tar.zst" -print -quit)"
+if [[ -z "$old_pkg" ]]; then
+    echo "UPGRADE_PATH=UNVERIFIABLE: no previous $package_name package in the published repository; no upgrade success is claimed." >&2
+    exit 0
 fi
 # 哨兵:chroot 构建留下的 pacman-base.conf(树形态)或 runner 缓存里的
 # baseline 归档(纯 legacy run 的常态)任一存在即可继续。
@@ -80,7 +77,7 @@ new_pkgname="$(bsdtar -xOf "$new_pkg" .PKGINFO | awk -F ' = ' '$1 == "pkgname" {
 [[ -n "$new_pkgname" ]] || { echo "Missing pkgname in $new_pkg" >&2; exit 2; }
 find "$repo_dir" -maxdepth 1 -type f -name "${new_pkgname}-*.pkg.tar.zst" -delete
 cp -f -- "$new_pkg" "$repo_dir/"
-repo-add --remove "$repo_dir/emoeem-staging.db.tar.gz" "$repo_dir/"*.pkg.tar.zst
+repo-add --remove "$repo_dir/fuego-repo-staging.db.tar.gz" "$repo_dir/"*.pkg.tar.zst
 python3 - "$work/root/etc/pacman.conf" "$repo_dir" <<'PYCONF'
 from pathlib import Path
 import re, sys
@@ -89,46 +86,22 @@ text = Path(path).read_text(encoding='utf-8')
 match = re.search(r'(?m)^\[cachyos-v3\]\s*$', text)
 if not match:
     raise SystemExit('Upgrade chroot config lost the cachyos-v3 repository')
-staging = f'[emoeem-staging]\nSigLevel = Never\nServer = file://{staging_dir}\n\n'
+staging = f'[fuego-repo-staging]\nSigLevel = Never\nServer = file://{staging_dir}\n\n'
 Path(path).write_text(text[:match.start()] + staging + text[match.start():], encoding='utf-8')
 PYCONF
 # -c:baseline 的 config 由 mkarchroot -c 写入 CacheDir=/cache/pacman,但不
 # bind 的话 pacman 只能落在 /tmp("couldn't find or create package cache")。
 # 与 build-in-clean-chroot.sh 的 update-first 同款:同路径 rw bind 共享缓存。
 arch-nspawn -c "$cache_dir/pacman" "$work/root" pacman -Syu --noconfirm
-if [[ "$package_name" == sing-box-ebpf ]]; then
-    # The transition is from an upstream package name, not an older private
-    # release. Install the official package, then let pacman apply conflicts / provides.
-    # 上游包不住在固定仓库:cachyos-v3/sing-box 实测 target not found(本机
-    # 为 cachyos-extra-v3,2026-10-11),按 pacman.conf 优先级从已同步数据库
-    # 找第一个携带真实包名 sing-box 的仓库。不能裸 -S sing-box:staging 里
-    # 只有 provides(即新包自己),会解析过去让测试空转。
-    upstream_repo="$(arch-nspawn "$work/root" pacman -Sl | awk '$2 == "sing-box" {print $1; exit}')"
-    if [[ -z "$upstream_repo" ]]; then
-        printf '::warning::No configured repository carries upstream sing-box; upgrade-path test skipped for %s.\n' "$package_name"
-        echo 'UPGRADE_PATH=UNVERIFIABLE: upstream sing-box absent from all configured repositories; no upgrade success is claimed.' >&2
-        exit 0
-    fi
-    arch-nspawn -c "$cache_dir/pacman" "$work/root" pacman -S --needed --noconfirm "${upstream_repo}/sing-box"
-else
-    mapfile -t dependencies < <(bsdtar -xOf "$old_pkg" .PKGINFO | awk -F ' = ' '$1 == "depend" {print $2}')
-    if ((${#dependencies[@]} > 0)); then arch-nspawn -c "$cache_dir/pacman" "$work/root" pacman -S --needed --noconfirm "${dependencies[@]}"; fi
-    # Install the old private release first to exercise the upgrade transaction.
-    arch-nspawn -c "$cache_dir/pacman" "$work/root" pacman -U --noconfirm /tmp/old.pkg.tar.zst
-fi
+# Both scoped packages keep their name across publishes, so the upgrade is a
+# plain same-name transaction: install the old private release, then let pacman
+# upgrade it to the artifact built in this run.
+mapfile -t dependencies < <(bsdtar -xOf "$old_pkg" .PKGINFO | awk -F ' = ' '$1 == "depend" {print $2}')
+if ((${#dependencies[@]} > 0)); then arch-nspawn -c "$cache_dir/pacman" "$work/root" pacman -S --needed --noconfirm "${dependencies[@]}"; fi
+# Install the old private release first to exercise the upgrade transaction.
+arch-nspawn -c "$cache_dir/pacman" "$work/root" pacman -U --noconfirm /tmp/old.pkg.tar.zst
 # conflicts 移除问题在 --noconfirm 下照默认答 N,事务直接失败(--ask=4 与
 # build-in-arch.sh 的 pacman 垫片同语义:一次性容器里自动接受冲突移除)。
 arch-nspawn -c "$cache_dir/pacman" "$work/root" pacman -Syu --noconfirm --ask=4 "$package_name"
 installed="$(arch-nspawn "$work/root" pacman -Q "$package_name")"
-if [[ "$package_name" == sing-box-ebpf ]]; then
-    # pacman -Q 会按 provides 匹配:sing-box-ebpf provides=sing-box,拿它查
-    # sing-box 永远命中新包自己(2026-10-11 实测:事务里明明 removing
-    # sing-box,检查却报 remains installed)。查精确包名列表才能判定上游
-    # 包真的被移除。
-    if arch-nspawn "$work/root" pacman -Qq | grep -qx 'sing-box'; then
-        echo 'Upgrade path failed: official sing-box remains installed after installing sing-box-ebpf.' >&2
-        exit 1
-    fi
-    echo 'Replacement path passed: official sing-box was replaced by sing-box-ebpf.'
-fi
 printf 'UPGRADE_PATH=PASS: %s\n' "$installed"

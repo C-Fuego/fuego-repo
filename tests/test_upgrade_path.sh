@@ -23,19 +23,13 @@ if [[ "$1" == pacman ]]; then
   shift
   case "${1:-}" in
     -Sl)
-      # The upgrade script resolves the upstream sing-box repo from synced
-      # databases by exact package name; answer with a repo other than the
-      # previously hardcoded cachyos-v3 to prove nothing is pinned.
-      printf '%s\n' 'cachyos-v3 zlib 1:1.3.2-3.1' 'chaotic-aur sing-box 1.10.0-5' ;;
-    -S)
-      if [[ "${*: -1}" == */sing-box ]]; then touch "$MOCK_STATE/sing-box"; fi
-      ;;
+      printf '%s\n' 'cachyos-v3 zlib 1:1.3.2-3.1' 'fuego-repo ffmpeg-full 9.0.2-2' ;;
+    -S) : ;;
     -Syu)
       target="${*: -1}"
-      if [[ "$target" == sing-box-ebpf ]]; then rm -f "$MOCK_STATE/sing-box"; touch "$MOCK_STATE/sing-box-ebpf"; fi
-      if [[ "$target" == linuxqq-clipsync-git ]]; then touch "$MOCK_STATE/linuxqq-clipsync-git"; fi
+      touch "$MOCK_STATE/$target"
       ;;
-    -U) touch "$MOCK_STATE/linuxqq-clipsync-git" ;;
+    -U) touch "$MOCK_STATE/linuxqq-wayland-fix-git" ;;
     -Qq) ls "$MOCK_STATE" ;;
     -Q)
       package="${2:-}"
@@ -62,37 +56,37 @@ make_pkg() {
   bsdtar -cf "$dir/$name-$version-x86_64.pkg.tar.zst" -C "$tmp/pkgmeta" .PKGINFO
 }
 # Normal upgrade: old private package is installed, then the new repo package is upgraded.
-make_pkg "$tmp/old" linuxqq-clipsync-git 1.0-1 'glibc>=2.0'
-make_pkg "$tmp/new" linuxqq-clipsync-git 1.1-1
-PACKAGE_NAME=linuxqq-clipsync-git PATH="$tmp/bin:$PATH" bash "$script" "$tmp/new" "$tmp/old" "$tmp/cache" > "$tmp/normal.out" || { cat "$tmp/normal.out"; exit 1; }
-grep -q 'UPGRADE_PATH=PASS: linuxqq-clipsync-git 1.0-1' "$tmp/normal.out"
+make_pkg "$tmp/old" linuxqq-wayland-fix-git 1.0-1 'glibc>=2.0'
+make_pkg "$tmp/new" linuxqq-wayland-fix-git 1.1-1
+PACKAGE_NAME=linuxqq-wayland-fix-git PATH="$tmp/bin:$PATH" bash "$script" "$tmp/new" "$tmp/old" "$tmp/cache" > "$tmp/normal.out" || { cat "$tmp/normal.out"; exit 1; }
+grep -q 'UPGRADE_PATH=PASS: linuxqq-wayland-fix-git' "$tmp/normal.out"
 grep -q 'pacman -U --noconfirm /tmp/old.pkg.tar.zst' "$MOCK_LOG"
-# Replacement semantics: upstream sing-box is installed and must disappear when sing-box-ebpf is selected.
-# Remove the previous linuxqq fixture so the script cannot accidentally select it first.
-rm -f "$tmp/new"/*.pkg.tar.zst
-make_pkg "$tmp/new" sing-box-ebpf 2.0-1
-PACKAGE_NAME=sing-box-ebpf PATH="$tmp/bin:$PATH" bash "$script" "$tmp/new" "$tmp/old" "$tmp/cache" > "$tmp/replace.out"
-grep -q 'Replacement path passed' "$tmp/replace.out"
-grep -q 'UPGRADE_PATH=PASS: sing-box-ebpf' "$tmp/replace.out"
-grep -q 'pacman -S --needed --noconfirm chaotic-aur/sing-box' "$MOCK_LOG"
+# Tag-tracking package: folia lives in the published repository at an older
+# upstream tag and is upgraded onto the newer one, same package name.
+rm -f "$tmp/new"/*.pkg.tar.zst "$tmp/old"/*.pkg.tar.zst
+make_pkg "$tmp/old" folia 0.1.2-1
+make_pkg "$tmp/new" folia 0.1.3-1
+PACKAGE_NAME=folia PATH="$tmp/bin:$PATH" bash "$script" "$tmp/new" "$tmp/old" "$tmp/cache" > "$tmp/folia.out" || { cat "$tmp/folia.out"; exit 1; }
+grep -q 'UPGRADE_PATH=PASS: folia' "$tmp/folia.out"
 # Missing prior private artifact is explicitly unverified, never a false pass.
 mkdir -p "$tmp/new2" "$tmp/old2"
-make_pkg "$tmp/new2" linuxqq-clipsync-git 1.2-1
-PACKAGE_NAME=linuxqq-clipsync-git PATH="$tmp/bin:$PATH" bash "$script" "$tmp/new2" "$tmp/old2" "$tmp/cache" > "$tmp/missing.out" 2>&1
+make_pkg "$tmp/new2" linuxqq-wayland-fix-git 1.2-1
+PACKAGE_NAME=linuxqq-wayland-fix-git PATH="$tmp/bin:$PATH" bash "$script" "$tmp/new2" "$tmp/old2" "$tmp/cache" > "$tmp/missing.out" 2>&1
 grep -q 'UPGRADE_PATH=UNVERIFIABLE' "$tmp/missing.out"
 ! grep -q 'UPGRADE_PATH=PASS' "$tmp/missing.out"
 # A missing clean-chroot baseline skips loudly instead of failing the build:
 # legacy-mode runs have no baseline fixture, and a good package must not be
-# blocked by an absent test prerequisite. sing-box-ebpf takes the replacement
-# path, which reaches the baseline lookup instead of exiting on missing-old.
-mkdir -p "$tmp/new3"
-make_pkg "$tmp/new3" sing-box-ebpf 2.1-1
+# blocked by an absent test prerequisite. The old artifact is present, so the
+# run reaches the baseline lookup instead of exiting on missing-old.
+mkdir -p "$tmp/new3" "$tmp/old3"
+make_pkg "$tmp/new3" linuxqq-wayland-fix-git 1.3-1
+make_pkg "$tmp/old3" linuxqq-wayland-fix-git 1.0-1
 mv "$tmp/cache/chroot/pacman-base.conf" "$tmp/cache/chroot/pacman-base.conf.saved"
-PACKAGE_NAME=sing-box-ebpf PATH="$tmp/bin:$PATH" bash "$script" "$tmp/new3" "$tmp/old2" "$tmp/cache" > "$tmp/no-baseline.out" 2>&1
+PACKAGE_NAME=linuxqq-wayland-fix-git PATH="$tmp/bin:$PATH" bash "$script" "$tmp/new3" "$tmp/old3" "$tmp/cache" > "$tmp/no-baseline.out" 2>&1
 rc=$?
 mv "$tmp/cache/chroot/pacman-base.conf.saved" "$tmp/cache/chroot/pacman-base.conf"
 (( rc == 0 ))
 grep -q 'UPGRADE_PATH=UNVERIFIABLE' "$tmp/no-baseline.out"
 grep -q '::warning::' "$tmp/no-baseline.out"
 ! grep -q 'UPGRADE_PATH=PASS' "$tmp/no-baseline.out"
-printf 'upgrade path tests passed: normal upgrade, official-package replacement, missing-old explicit unverified, missing-baseline loud skip\n'
+printf 'upgrade path tests passed: normal upgrade (AUR VCS), tag-tracking upgrade (folia), missing-old explicit unverified, missing-baseline loud skip\n'

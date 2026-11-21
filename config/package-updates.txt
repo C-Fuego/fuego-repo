@@ -18,17 +18,11 @@
 # of such a package go stale, the repair hands the re-pin to that workflow
 # instead of rewriting the checksums itself.
 
-sing-box-rule-sets workflow .github/workflows/refresh-rule-sets.yml
-sing-box-ebpf workflow .github/workflows/sing-box-ebpf-update.yml
 # Filee publishes a prebuilt linux-x64 tarball; filee-update.yml re-pins the
 # release asset after validating its published SHA-256 and building a candidate.
-filee-bin workflow .github/workflows/filee-update.yml
-sing-box-panel manual source lives in this repo plus a pinned zashboard archive; bumped by hand
-dracpanel manual static UI built from the fork source tarball; bump the tarball, sha256sums and .SRCINFO by hand
 # Trae CN ships only a .deb/.rpm plus the raw Electron tarball this package
 # repacks. Bumping means a new CDN release directory: update pkgver, the
 # sha256sums, and .SRCINFO together.
-trae-cn-appimage manual upstream CDN tarball repacked into an AppImage; bump pkgver, sha256sums and .SRCINFO by hand
 # DeepSeek Harness desktop is built (patched Electron tree + pnpm) and packaged
 # by upstream's own CI; this repository repacks the published x86_64 Arch asset.
 # dsh-desktop-linux-update.yml re-pins pkgver (it is embedded in the asset
