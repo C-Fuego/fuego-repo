@@ -328,6 +328,33 @@ pacman 拦不住；本地 hook 当场报了 `fuego-repo  ffmpeg-full`，但真�
 `client/install.sh` 上游脚本针对 GitHub Release 发布方式，迁移到 R2 后已
 不再适用，本 fork 没有携带它。手动配置见上文「作为 pacman 仓库使用」。
 
+## CI 配置
+
+仓库发布到 Cloudflare R2。以下值必须在 GitHub 里配好，否则 `build.yml` 的
+发布阶段会在上传前失败（不会留下一个客户端用不了的库）：
+
+Actions **Variables**：
+
+- `R2_BUCKET`：桶名，与 pacman 仓库名相同：`fuego-repo`。
+- `R2_PUBLIC_URL`：客户端使用的地址，`https://ignacio.dpdns.org/x86_64`
+  （必须是 https，末尾不带斜杠）。
+
+Actions **Secrets**：
+
+- `R2_ENDPOINT`：`https://<account-id>.r2.cloudflarestorage.com`。
+- `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY`：R2 API token 的 Access Key ID
+  与 Secret，权限只需 Object Read & Write，范围限定到该桶。
+- `REPOSITORY_PRIVATE_KEY`：ASCII armored GPG 私钥。
+- `REPOSITORY_KEY_PASSPHRASE`：私钥密码；无密码时留空。
+
+R2 侧另需把自定义域 `ignacio.dpdns.org` 指向该桶（R2 控制台 → 桶 →
+Settings → Custom Domains）。接上之前若该主机名已有 A/AAAA 记录，会与
+R2 争用同一名字，需要先删掉。
+
+工作流会签名每个软件包、数据库和 files 数据库，并将公钥导出为
+`x86_64/fuego-repo-key.asc`。客户端导入并本地信任该密钥后，可改用
+`SigLevel = Required DatabaseRequired`。
+
 建议为 CI 单独创建仅用于仓库签名的 GPG 子密钥。
 
 ## 资源与许可
