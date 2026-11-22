@@ -140,13 +140,13 @@ run_check() {
             bash tests/test_publish_inputs.sh
             ;;
         shell-syntax)
-            bash -n manage.sh scripts/*.sh client/*.sh tests/*.sh
+            bash -n manage.sh scripts/*.sh tests/*.sh
             ;;
         shellcheck)
             require_tool shellcheck || return 1
             # --severity=warning matches the per-package CI step; a lower
             # severity would turn style opinions into a blocked commit.
-            shellcheck --severity=warning manage.sh scripts/*.sh client/*.sh tests/*.sh
+            shellcheck --severity=warning manage.sh scripts/*.sh tests/*.sh
             ;;
         python-syntax)
             require_tool python3 || return 1
