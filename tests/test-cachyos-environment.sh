@@ -21,7 +21,7 @@ check 'command: gcc' command -v gcc >/dev/null
 check 'command: g++' command -v g++ >/dev/null
 check 'command: as' command -v as >/dev/null
 check 'command: ld' command -v ld >/dev/null
-check 'compiler: znver3 C smoke test' bash -c 'printf "%s\n" "int main(void){return 0;}" | gcc -march=znver3 -mtune=znver3 -O3 -x c -c -o /tmp/emo-cflags-test.o -'
+check 'compiler: x86-64-v3 C smoke test' bash -c 'printf "%s\n" "int main(void){return 0;}" | gcc -march=x86-64-v3 -mtune=generic -O3 -x c -c -o /tmp/emo-cflags-test.o -'
 rm -f /tmp/emo-cflags-test.o
 
 if [[ "$mode" == builder ]]; then
@@ -32,7 +32,7 @@ if [[ "$mode" == builder ]]; then
     check 'command: nvchecker' command -v nvchecker >/dev/null
     check 'command: yay' command -v yay >/dev/null
     check 'frontend: cc1obj' bash -c 'test -x "$(gcc -print-prog-name=cc1obj)"'
-    check 'compiler: Objective-C smoke test' bash -c 'printf "%s\n" "int main(void){return 0;}" | gcc -march=znver3 -mtune=znver3 -O3 -x objective-c -c -o /tmp/emo-objc-test.o -'
+    check 'compiler: Objective-C smoke test' bash -c 'printf "%s\n" "int main(void){return 0;}" | gcc -march=x86-64-v3 -mtune=generic -O3 -x objective-c -c -o /tmp/emo-objc-test.o -'
     rm -f /tmp/emo-objc-test.o
     check 'pacman: DisableSandboxNetwork' bash -c 'pacman-conf DisableSandboxNetwork | grep -Fxq DisableSandboxNetwork'
     check 'environment: PKGBUILD_BUILDER_IMAGE=1' test "${PKGBUILD_BUILDER_IMAGE:-0}" = 1

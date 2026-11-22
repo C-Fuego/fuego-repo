@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # Local-only repository policy: the private repository, when it is configured at
-# all, must be authoritative; and the toolchain must target Zen 3.
+# all, must be authoritative; and the toolchain must target the portable x86-64-v3 baseline.
 #
 # "When it is configured" is the operative clause. configure-build-repo.sh only
 # writes [emoeem] into pacman.conf when the mounted repository directory holds
@@ -44,9 +44,9 @@ elif [[ -n "$local_repo_dir" ]]; then
     printf 'Local repository %s is empty; building without it.\n' "$local_repo_dir"
 fi
 
-march="znver3"
-if ! gcc -march=znver3 -mtune=znver3 -O3 -x c -c /dev/null -o /tmp/emo-build-policy-test.o >/dev/null 2>&1; then
-    printf 'Compiler cannot accept required Zen 3 target: %s.\n' "$march" >&2
+march="x86-64-v3"
+if ! gcc -march=x86-64-v3 -mtune=generic -O3 -x c -c /dev/null -o /tmp/emo-build-policy-test.o >/dev/null 2>&1; then
+    printf 'Compiler cannot accept required target: %s.\n' "$march" >&2
     exit 2
 fi
 rm -f /tmp/emo-build-policy-test.o

@@ -51,11 +51,15 @@ grep -Fq -- "'cuda'" "$root/packages/ffmpeg-full/PKGBUILD" \
     || fail 'ffmpeg-full does not declare CUDA build dependency'
 grep -Fq -- 'NVCC_CCBIN=/usr/bin/g++-15' "$root/scripts/build-in-arch.sh" \
     || fail 'ffmpeg-full builder path does not pin nvcc to GCC 15'
-printf '%s\n' '3/14: verify local Zen 3 performance profile and RTX 4050 CUDA target'
-grep -Fq -- '-march=znver3 -mtune=znver3 -O3' "$root/config/emo-native-flags.conf" || fail 'local Zen 3 profile missing'
+printf '%s\n' '3/14: verify the portable x86-64-v3 profile and RTX 4050 CUDA target'
+grep -Fq -- '-march=x86-64-v3 -mtune=generic -O3' "$root/config/emo-native-flags.conf" || fail 'portable x86-64-v3 profile missing'
+# znver3 emits AMD-only SSE4a (insertq/extrq); a published libflyline.so built with it
+# raised SIGILL in bash on an Intel CPU. No vendor-specific target may come back.
+if grep -v '^[[:space:]]*#' "$root/config/emo-native-flags.conf" "$root/config/emo-native-flags.sh" | grep -Eq 'znver|zen[0-9]|target-cpu=native|march=native'; then
+    fail 'build profile names a vendor-specific or host-native CPU'
+fi
 # Published ffmpeg-full artifacts have to stay usable on every x86-64-v3
-# machine, so the overlay pins the portable baseline instead of the local Zen 3
-# profile and must never inherit the builder host's -march=native.
+# machine, so the overlay pins the portable baseline and must never inherit the builder host's -march=native.
 grep -Fq -- '-march=x86-64-v3 -mtune=generic' "$root/packages/ffmpeg-full/PKGBUILD" \
     || fail 'ffmpeg-full does not pin the portable x86-64-v3 baseline'
 if grep -v '^[[:space:]]*#' "$root/packages/ffmpeg-full/PKGBUILD" | grep -Fq -- '-march=native'; then

@@ -65,7 +65,7 @@ nvchecker 发现上游新版本但发布未跟进。按 [DEPENDENCY-MANAGEMENT.m
 `emoeem-repo-update` 系列是已废弃的旧客户端残留：`sudo scripts/remove-legacy-repo-update.sh --apply`。
 
 ### 本地构建要求
-CachyOS 主机 + cachyos-v3 仓库启用（`build-in-arch.sh` 会检查）；Zen 3 目标由 `validate-build-policy.sh` 强制。其他主机用 CachyOS-v3 builder 镜像。
+CachyOS 主机 + cachyos-v3 仓库启用（`build-in-arch.sh` 会检查）；x86-64-v3 目标由 `validate-build-policy.sh` 强制。其他主机用 CachyOS-v3 builder 镜像。
 
 ## 快速自检
 
