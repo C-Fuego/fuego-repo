@@ -1,7 +1,7 @@
 # Maintainer: C-Fuego
 pkgname=zpipes
 pkgver=0.3.0
-pkgrel=1
+pkgrel=2
 pkgdesc="pipes.sh clone written in Zig"
 arch=('x86_64')
 options=('!debug' '!strip')
@@ -9,7 +9,7 @@ url="https://github.com/C-Fuego/Rezig"
 license=('MIT')
 depends=()
 makedepends=('zig')
-_commit=HEAD
+_commit=0eb8604da94bdf51ae14a44db2382b6952d6b013
 # 上游目录名为 zpipes，二进制名为 zpipes；包名沿用 zpipes。
 source=("$pkgname::git+https://github.com/C-Fuego/Rezig#commit=$_commit")
 sha256sums=('SKIP')
