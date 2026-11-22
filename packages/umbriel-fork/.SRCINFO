@@ -1,8 +1,7 @@
-pkgbase = umbriel
+pkgbase = umbriel-fork
 	pkgdesc = Umbriel Wayland compositor with the C-Fuego agent seat and shake-to-enlarge cursor
 	pkgver = 0.1.0.r262.dc5c86f
 	pkgrel = 1
-	epoch = 1
 	url = https://github.com/C-Fuego/umbriel
 	arch = x86_64
 	license = MIT
@@ -35,7 +34,9 @@ pkgbase = umbriel
 	optdepends = grim: capture screenshots for computer-use workflows
 	optdepends = kitty: terminal used by the default key binding
 	optdepends = xdg-desktop-portal-umbriel: desktop portal for screenshots and screen sharing
-	source = umbriel-dc5c86f621bc7d44ac978b8e0eb3ef5ed7f3b1c5.tar.gz::https://codeload.github.com/C-Fuego/umbriel/tar.gz/dc5c86f621bc7d44ac978b8e0eb3ef5ed7f3b1c5
+	provides = umbriel=0.1.0.r262.dc5c86f
+	conflicts = umbriel
+	source = umbriel-fork-dc5c86f621bc7d44ac978b8e0eb3ef5ed7f3b1c5.tar.gz::https://codeload.github.com/C-Fuego/umbriel/tar.gz/dc5c86f621bc7d44ac978b8e0eb3ef5ed7f3b1c5
 	sha256sums = 0263b3e17fbd8ab65ca2fa936d5fd86076829fd2eb16bb4066e21b98a806b03b
 
-pkgname = umbriel
+pkgname = umbriel-fork

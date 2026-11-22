@@ -1,3 +1,0 @@
-track = "manual"
-reason = "C-Fuego fork, packaged under the original name; archive pinned to a reviewed commit"
-strategy = "source"

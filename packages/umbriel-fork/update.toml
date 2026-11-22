@@ -1,0 +1,3 @@
+track = "manual"
+reason = "C-Fuego Umbriel fork pinned to a reviewed source commit"
+strategy = "source"
