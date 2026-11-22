@@ -8,7 +8,7 @@
 症状：装了高版本的机器永远升不上去。
 排查：`git log --grep='write back'` 看 write-back 是否发生；对比源码树 `packages/<pkg>/PKGBUILD` 的 pkgrel 与发布产物。
 机制：`verify-publish-inputs.sh` 现在对降级硬失败、对撞车 bump 硬失败；write-back 只前进。若再次发生说明闸门链被绕过——检查构建是否用了 `LOCAL_REPO_DIR`（没有它 E2 floor 不跑）。
-参见 [PKGREL-POLICY.md](PKGREL-POLICY.md)。
+参见 [pkgrel 政策](../reference/pkgrel-policy.md)。
 
 ### `Publication would not upgrade / would downgrade` 发布失败
 不是 bug：源码树 pkgrel 落后于已发布版本（多半是 write-back 没跑或 AUR sync 拉回）。先让源码树追上（重跑 sync 或手动对齐），再重新构建发布。
@@ -57,7 +57,7 @@ dsh 的 `build()` 对账失败说明上游资产的 depend 集合变了：按错
 rule-sets 等仓库管理源的校验和失效时，`auto-repair` 会按 `update.toml` 的 `workflow` 字段派发支持手动触发的更新工作流，不在本地改哈希。先用 `./manage.sh packages show <pkgbase>` 核对更新方式和工作流路径；没有可派发工作流时需人工检查。
 
 ### `[upstream]` issue 长期挂着
-nvchecker 发现上游新版本但发布未跟进。按 [DEPENDENCY-MANAGEMENT.md](DEPENDENCY-MANAGEMENT.md) 的 vendored 依赖升级流程处理；closed 即代表已追平。
+nvchecker 发现上游新版本但发布未跟进。按 [依赖管理](../reference/dependency-management.md#vendored-依赖的升级流程ffmpeg-full-为例) 的 vendored 依赖升级流程处理；closed 即代表已追平。
 
 ## 本机环境类
 

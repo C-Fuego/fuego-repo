@@ -4,9 +4,11 @@
 
 ## 逐包声明：`update.toml`
 
+完整字段、默认值与更新行为见 [`update.toml` 参考](update-toml.md)。
+
 在 `packages/<pkgbase>/update.toml` 中，用顶层字符串 `track` 声明唯一的更新方式，
 用 `strategy` 独立声明构建策略：`source`、`vcs`、`binary` 或 `data`（见
-[构建策略](BUILD-STRATEGY.md)）。例如：
+[构建策略](build-strategy.md)）。例如：
 
 ```toml
 track = "aur"
@@ -72,4 +74,4 @@ package <name>               # 仓库解析不到版本的依赖走 AUR RPC 对�
 
 ## 相关文档
 
-[ABI-REBUILD-POLICY.md](ABI-REBUILD-POLICY.md)（漂移检测与重建）、[BUILD-STRATEGY.md](BUILD-STRATEGY.md)（哪些包不参与）、[FFmpeg-FEATURE-MATRIX.md](FFmpeg-FEATURE-MATRIX.md)（功能验证）。
+[ABI 重建政策](abi-rebuild-policy.md)（漂移检测与重建）、[构建策略](build-strategy.md)（哪些包不参与）、[FFmpeg 功能矩阵](ffmpeg-feature-matrix.md)（功能验证）。

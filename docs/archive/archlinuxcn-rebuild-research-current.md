@@ -1,6 +1,6 @@
 # How archlinuxcn decides to rebuild — primary-source research
 
-Companion: [archlinuxcn-publish-research.md](archlinuxcn-publish-research.md) covers the publish half (worker → signature → repo dir → DB → mirror).
+Companion: [archlinuxcn-publish-research.md](archlinuxcn-publish-research-current.md) covers the publish half (worker → signature → repo dir → DB → mirror).
 
 Sources: shallow clones of `github.com/archlinuxcn/lilac` @ `dccdb58b25e16a567faa2162573138c5f44cc14f` and `github.com/archlinuxcn/repo` + its wiki (`github.com/archlinuxcn/repo.wiki.git`); fetched pages https://build.archlinuxcn.org/ and https://archlinuxcn.github.io/lilac/. Retrieved 2026-10-10. No file name, function or number below is invented; paths are from the clones.
 
@@ -35,7 +35,7 @@ The schema documents `update_on` as "Configure how nvchecker should check for up
 | | archlinuxcn (lilac) | emoeem/pkgbuild |
 |---|---|---|
 | Build execution | own Arch hosts, devtools chroot under `/var/lib/archbuild`; optional remote workers over SSH | GitHub Actions in a GHCR-published CachyOS `x86-64-v3` container |
-| Publish target | signed pkgs + `.sig` hardlinked into the repo dir → `archlinuxcn.db`/`.files` regenerated on the build host → mirrors. The DB *writer* is not confirmed to be archrepo2 (documented-optional only) — see [archlinuxcn-publish-research.md](archlinuxcn-publish-research.md) | GitHub Release assets (`repo` bundle) |
+| Publish target | signed pkgs + `.sig` hardlinked into the repo dir → `archlinuxcn.db`/`.files` regenerated on the build host → mirrors. The DB *writer* is not confirmed to be archrepo2 (documented-optional only) — see [archlinuxcn-publish-research.md](archlinuxcn-publish-research-current.md) | GitHub Release assets (`repo` bundle) |
 | Drift detection | per package, declared (`update_on` entries 2..n, `update_on_build`, `manual`); no global scan | global: `dependency-drift.yml` every 2h compares recorded dep versions of **published** packages |
 | Soname/ABI checking | declared provider sonames only (`provided:` / `filename:` regex / alias table); nothing reads the built ELF | `check-repository-sonames.sh` checks published packages' linked sonames vs current providers, ≥100-provider sanity floor |
 | QA gates | repo pre-commit + CI schema/lint checks; makepkg + `check_srcinfo` + GPG sign; **no namcap** | `run-namcap.sh`, `check-elf-needed.sh`, `verify-repository-elf.sh`, `runtime-smoke-test.sh`, `repository-install-test.sh` |

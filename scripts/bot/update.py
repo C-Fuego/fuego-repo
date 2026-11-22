@@ -27,7 +27,7 @@ with --apply, rewrites PKGBUILD (+ regenerates .SRCINFO via makepkg) in place.
 The workflow runs it inside a fresh branch so the change arrives as a pull
 request, not a silent commit.
 
-It reuses scripts/hub/pins.py for git probing and scripts/lib/pkgrel-policy.sh
+It reuses scripts/bot/pins.py for git probing and scripts/lib/pkgrel-policy.sh
 for pkgrel arithmetic, so a bump here obeys the same policy every other entry
 point does.
 
@@ -50,8 +50,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from hub import declaration as decl  # noqa: E402
-from hub import pins  # noqa: E402
+from bot import declaration as decl  # noqa: E402
+from bot import pins  # noqa: E402
 
 UPDATE_FILENAME = decl.UPDATE_FILENAME
 TRACKS = decl.GIT_TRACKS
@@ -372,7 +372,7 @@ def patch_srcinfo(text: str, edits: list[tuple[str, str]], old_commit: str = "")
     ``#commit=`` fragment of the git source.  Anything else (a new dependency,
     a renamed source) changes more than this function knows about, which is why
     ``regenerate_srcinfo`` prefers makepkg whenever it is installed and
-    ``tests/test_hub_update.py`` checks that both paths agree.
+    ``tests/test_bot_update.py`` checks that both paths agree.
     """
     for field_name, new_value in edits:
         if field_name in ("pkgver", "pkgrel"):

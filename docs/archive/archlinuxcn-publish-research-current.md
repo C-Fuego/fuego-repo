@@ -1,8 +1,8 @@
 # How archlinuxcn publishes packages, end to end — primary-source research (publish half)
 
-Companion to [archlinuxcn-rebuild-research.md](archlinuxcn-rebuild-research.md), which covers *why* a package rebuilds. This file covers *what happens to the artifact*: worker → signature → repo directory → database → mirror, plus the live scale numbers. Everything below is fetched primary source (URLs inline, retrieved 2026-10-10); anything inferred is labelled.
+Companion to [archlinuxcn-rebuild-research.md](archlinuxcn-rebuild-research-current.md), which covers *why* a package rebuilds. This file covers *what happens to the artifact*: worker → signature → repo directory → database → mirror, plus the live scale numbers. Everything below is fetched primary source (URLs inline, retrieved 2026-10-10); anything inferred is labelled.
 
-> **Correction to the existing doc.** [archlinuxcn-rebuild-research.md:36](archlinuxcn-rebuild-research.md#L36) says the publish path is "signed pkgs hardlinked into repo dir → **archrepo2** DB → mirrors". I could not confirm archrepo2 in the live path. archrepo2 still exists and was pushed 2026-07-20 (<https://github.com/lilydjwg/archrepo2>), and lilac's own docs still recommend it (<https://lilac.readthedocs.io/en/latest/setup.html>), but the live `archlinuxcn.db` is PostgreSQL-driven: `imlonghao/archlinuxcn-packages` queries `lilac.pkglog` / `lilac.batch`, and lilac's own setup page says only "You may use archrepo2 to do that", not that archlinuxcn does. Treat "archrepo2" as *the documented optional component*, not as a verified archlinuxcn fact.
+> **Correction to the existing doc.** [archlinuxcn-rebuild-research.md:36](archlinuxcn-rebuild-research-current.md#L36) says the publish path is "signed pkgs hardlinked into repo dir → **archrepo2** DB → mirrors". I could not confirm archrepo2 in the live path. archrepo2 still exists and was pushed 2026-07-20 (<https://github.com/lilydjwg/archrepo2>), and lilac's own docs still recommend it (<https://lilac.readthedocs.io/en/latest/setup.html>), but the live `archlinuxcn.db` is PostgreSQL-driven: `imlonghao/archlinuxcn-packages` queries `lilac.pkglog` / `lilac.batch`, and lilac's own setup page says only "You may use archrepo2 to do that", not that archlinuxcn does. Treat "archrepo2" as *the documented optional component*, not as a verified archlinuxcn fact.
 
 ## End-to-end flow
 
@@ -96,4 +96,4 @@ the change must do when it lands:
    yet.
 
 Neither item blocks the rebuild-side borrowings in
-[archlinuxcn-rebuild-research.md](archlinuxcn-rebuild-research.md).
+[archlinuxcn-rebuild-research.md](archlinuxcn-rebuild-research-current.md).

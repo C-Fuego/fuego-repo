@@ -4,7 +4,7 @@ set -Eeuo pipefail
 script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 root="${AUDIT_ROOT:-$script_root}"
 readonly root
-aur_helper="$script_root/scripts/hub/aur.py"
+aur_helper="$script_root/scripts/bot/aur.py"
 
 failures=0
 packages=()

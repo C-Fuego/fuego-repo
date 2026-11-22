@@ -30,7 +30,7 @@ ok() { printf 'ok: %s\n' "$*"; }
 
 read -r -d '' expected <<'EOF' || true
 package-manifest-policy
-hub-declarations
+bot-declarations
 package-manifest-tests
 package-count
 select-packages

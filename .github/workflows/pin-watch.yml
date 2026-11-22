@@ -68,7 +68,7 @@ jobs:
           if [[ -n "${PACKAGE_FILTER:-}" ]]; then
             args+=(--package "$PACKAGE_FILTER")
           fi
-          python3 scripts/hub/pins.py "${args[@]}" || status=$?
+          python3 scripts/bot/pins.py "${args[@]}" || status=$?
           echo "status=$status" >> "$GITHUB_OUTPUT"
           summary="$(grep -E '^SUMMARY ' .cache/pin-watch/report.md || true)"
           echo "summary=$summary" >> "$GITHUB_OUTPUT"

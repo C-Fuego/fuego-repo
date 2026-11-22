@@ -11,12 +11,12 @@ readonly repo_root
 # The package CLI is local-only and does not need fzf or a Git worktree.
 case "${1:-}" in
     add | packages)
-        exec python3 "${repo_root}/scripts/hub/manage.py" "$@"
+        exec python3 "${repo_root}/scripts/bot/manage.py" "$@"
         ;;
 esac
 if [[ "${1:-}" == --no-push && ( "${2:-}" == add || "${2:-}" == packages ) ]]; then
     shift
-    exec python3 "${repo_root}/scripts/hub/manage.py" "$@"
+    exec python3 "${repo_root}/scripts/bot/manage.py" "$@"
 fi
 
 github_repository="${PKGBUILD_GITHUB_REPOSITORY:-C-Fuego/fuego-repo}"
@@ -248,7 +248,7 @@ aur_package_records() {
         printf '%s\t%s-%s\t%s\n' \
             "$package_name" "$pkgver" "$pkgrel" "$pkgdesc"
     done < <(
-        python3 "${repo_root}/scripts/hub/manage.py" packages list --track aur --no-header |
+        python3 "${repo_root}/scripts/bot/manage.py" packages list --track aur --no-header |
             while IFS=$'\t' read -r name _; do
                 printf '%s/packages/%s\n' "$repo_root" "$name"
             done
@@ -370,24 +370,24 @@ add_package_local() {
     package_name="$(prompt_value '包名 / pkgbase')" || return
     [[ -n "$package_name" ]] || return
     if [[ "$mode" == AUR ]]; then
-        python3 "${repo_root}/scripts/hub/manage.py" add "$package_name"
+        python3 "${repo_root}/scripts/bot/manage.py" add "$package_name"
     else
         source="$(prompt_value '可信本地 PKGBUILD 目录')" || return
         [[ -n "$source" ]] || return
-        python3 "${repo_root}/scripts/hub/manage.py" add "$package_name" --from "$source"
+        python3 "${repo_root}/scripts/bot/manage.py" add "$package_name" --from "$source"
     fi
 }
 
 show_packages_overview() {
     local selected records
-    records="$(python3 "${repo_root}/scripts/hub/manage.py" packages list --no-header)" || return
+    records="$(python3 "${repo_root}/scripts/bot/manage.py" packages list --no-header)" || return
     if [[ -z "$records" ]]; then
         printf '没有托管的软件包。\n'
         return
     fi
     selected="$(fzf "${fzf_options[@]}" --prompt='软件包> ' \
         --header='包名 | 版本 | 更新轨道 | 构建策略' <<< "$records")" || return
-    python3 "${repo_root}/scripts/hub/manage.py" packages show "${selected%%$'\t'*}"
+    python3 "${repo_root}/scripts/bot/manage.py" packages show "${selected%%$'\t'*}"
 }
 
 add_aur_package() {

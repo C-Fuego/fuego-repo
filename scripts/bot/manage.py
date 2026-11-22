@@ -19,8 +19,8 @@ from urllib.request import urlopen
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from hub import declaration as decl  # noqa: E402
-from hub import update  # noqa: E402
+from bot import declaration as decl  # noqa: E402
+from bot import update  # noqa: E402
 from lib.pkgbuild_lib import PACKAGE_NAME_PATTERN, SourceInfoError, parse_srcinfo  # noqa: E402
 
 TRACKS = decl.UPDATE_TRACKS

@@ -57,7 +57,7 @@ ABI watch（`dependency-drift.yml`）和 maintenance（`maintenance.yml`）里�
 
 `scripts/check-package-manifests.py` 只用标准库，不需要 makepkg、不拉容器，因此在裸 runner 上先于 builder image 运行（`check.yml` 的 integration job）。它强制三条契约：
 
-- 每个包必须声明一个更新方式和一个构建策略。`packages/<pkgbase>/update.toml` 是权威声明：`track` 可选 `aur`、`workflow`、`manual` 或四种 Git track，`strategy` 独立决定构建行为。`workflow` 字段按 Git 跟踪状态校验，工作流改名不会静默留下孤儿包。旧格式仅用于兼容，字段见 [逐包声明](DEPENDENCY-MANAGEMENT.md#逐包声明updatetoml)。
+- 每个包必须声明一个更新方式和一个构建策略。`packages/<pkgbase>/update.toml` 是权威声明：`track` 可选 `aur`、`workflow`、`manual` 或四种 Git track，`strategy` 独立决定构建行为。`workflow` 字段按 Git 跟踪状态校验，工作流改名不会静默留下孤儿包。旧格式仅用于兼容，字段见 [逐包声明](../reference/update-toml.md)。
 - 已提交的元数据自洽：`pkgbase` 等于目录名、`pkgver` 不含 `-`/`:`/空白、`pkgrel` 为数字、`pkgdesc`/`url`/`license` 非空、每个 `*sums` 数组条目数等于 `source` 条目数、`packages/` 下没有已提交的 gitlink。
 - `packages/<name>/.rebuild-on`（逐包重建触发声明）语法与指向正确：触发类型只能是 `soname` / `package`，`soname` 必须是「soname + 提供者包名」两个字段，`package` 指向的必须是真实存在的包目录，同一声明不重复、不指向自己。解析器与门禁共用 `scripts/list-rebuild-triggers.sh`，不存在两套解析。
 
@@ -96,7 +96,7 @@ ABI watch（`dependency-drift.yml`）和 maintenance（`maintenance.yml`）里�
 - 当前运行中的 Actions 数量
 - 最近失败的 Actions 数量
 
-原有添加、删除、AUR 同步、构建、构建跟踪、失败构建排查、本地检查、更新检查和 pacman 安装功能保持不变。不使用菜单时，`./manage.sh add` 可仅在本地导入软件包，`./manage.sh packages list` 和 `./manage.sh packages show <pkgbase>` 可查看清单与生效策略。用法见 [导入软件包](add-aur-package.md)。
+原有添加、删除、AUR 同步、构建、构建跟踪、失败构建排查、本地检查、更新检查和 pacman 安装功能保持不变。不使用菜单时，`./manage.sh add` 可仅在本地导入软件包，`./manage.sh packages list` 和 `./manage.sh packages show <pkgbase>` 可查看清单与生效策略。用法见 [导入软件包](../tutorials/add-package.md)。
 
 ## 验证命令
 
@@ -240,7 +240,7 @@ For local rootless Podman validation, the unprivileged default runtime blocks ne
 
 The five package-local `.nvchecker.toml` files cover quirc, mpeghdec, ffmpeg-full, svt-jpeg-xs-git and vapoursynth-plugin-mlrt-ncnn-runtime. `.github/workflows/upstream-check.yml` runs daily and on demand inside the CachyOS builder image. It seeds `oldver` from each literal PKGBUILD `pkgver`, normalizing a git package's `.g<short-sha>` suffix to the comparable short commit. A detected upstream change opens or comments on a deduplicated `[upstream]` issue; the workflow never edits a PKGBUILD or bumps checksums automatically.
 
-Packages with dedicated updaters (such as `filee-bin`) validate and bump their own sources, so a second issue-based watch would only duplicate the work. Each package's `update.toml` declares whether it uses a dedicated `workflow` or one of the `git-*` tracks handled by `scripts/hub/update.py`. The manifest gate rejects a `workflow` path not tracked by Git. `.nvchecker.toml` remains separate and only reports upstream changes.
+Packages with dedicated updaters (such as `filee-bin`) validate and bump their own sources, so a second issue-based watch would only duplicate the work. Each package's `update.toml` declares whether it uses a dedicated `workflow` or one of the `git-*` tracks handled by `scripts/bot/update.py`. The manifest gate rejects a `workflow` path not tracked by Git. `.nvchecker.toml` remains separate and only reports upstream changes.
 
 ### P3 — build failure issues
 
@@ -261,7 +261,7 @@ Run `./tests/run-all.sh --fast` and `./scripts/run-static-checks.sh`; ShellCheck
 
 ### Historical local end-to-end validation
 
-The 2026-10-10 rootless-container probe and its exact failure evidence are archived at [`docs/archive/build-platform-validation-2026-10-10.md`](archive/build-platform-validation-2026-10-10.md). Do not repeat `makechrootpkg` locally under rootless Podman; the supported acceptance path is a manually dispatched rootful GitHub Actions shadow run.
+The 2026-10-10 rootless-container probe and its exact failure evidence are archived at [`docs/archive/build-platform-validation-2026-10-10.md`](../archive/build-platform-validation-2026-10-10.md). Do not repeat `makechrootpkg` locally under rootless Podman; the supported acceptance path is a manually dispatched rootful GitHub Actions shadow run.
 
 
 ## 7. Shadow run acceptance: legacy vs clean chroot

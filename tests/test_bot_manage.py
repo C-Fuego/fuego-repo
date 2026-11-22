@@ -13,7 +13,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from hub import manage  # noqa: E402
+from bot import manage  # noqa: E402
 
 
 def srcinfo(base, source="", output=None):

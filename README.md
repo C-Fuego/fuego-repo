@@ -15,7 +15,7 @@
 - Repository integration tests 在真实 Arch 容器中验证 `repo-add`、删除和 epoch 文件名处理。
 - 成功产物通过 `repo-add` 更新 `repo` 分支中的 pacman 仓库。
 
-构建平台（详见 `docs/build-platform.md`）：
+构建平台（详见 [`docs/operations/build-platform.md`](docs/operations/build-platform.md)：
 
 - **Build Plan**：每次运行先输出 changed / affected / rebuild / skipped 与**逐包原因**，不再是黑箱矩阵。
 - **DAG 调度**：仓库内互相依赖的包按波次排序；CI 等待本轮被选中的前置 job，并把其新构建产物 staging 到下游的本地构建仓库；本地可用 `scripts/parallel-build.sh` 波次并行。
@@ -66,17 +66,13 @@ Artifact 保存。构建成功后发布为滚动 GitHub Release（固定 tag `re
 pacman 直接从 Release 资产下载仓库数据库和软件包。AUR 同步只提交源
 文件，提交本身会触发一次构建，不会重复 dispatch 同一个构建。
 
-### 文档索引
+### 文档
 
-| 文档 | 内容 |
-| --- | --- |
-| [`docs/BUILD-STRATEGY.md`](docs/BUILD-STRATEGY.md) | 四类构建策略（source/vcs/binary/data）、逐包归类与调度分流 |
-| [`docs/PKGREL-POLICY.md`](docs/PKGREL-POLICY.md) | pkgrel 形状、全部递增入口、`.pkgrel-floor-skip` 语义、写回与闸门链 |
-| [`docs/ABI-REBUILD-POLICY.md`](docs/ABI-REBUILD-POLICY.md) | ABI watch 两类检测、STALE/UPSTREAM/NOTE 三态、冷却与豁免 |
-| [`docs/DEPENDENCY-MANAGEMENT.md`](docs/DEPENDENCY-MANAGEMENT.md) | 逐包 `update.toml`、nvchecker（含 vendored 基线）、`.rebuild-on`、依赖对账 |
-| [`docs/FFmpeg-FEATURE-MATRIX.md`](docs/FFmpeg-FEATURE-MATRIX.md) | ffmpeg-full 功能矩阵、构建后验证、GPU 三态、ELF 检查 |
-| [`docs/CI-QUALITY-GATES.md`](docs/CI-QUALITY-GATES.md) | 全部门禁清单、执行原则、并发去重、失败通知 |
-| [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | 按症状索引的排障手册（对应真实事故） |
+按教程、参考手册和运维指南浏览：[文档索引](docs/README.md)。
+
+- [`update.toml` 权威字段与语义](docs/reference/update-toml.md)
+- [`manage.sh` 包管理 CLI 全部命令和选项](docs/reference/manage-cli.md)
+- [添加软件包教程](docs/tutorials/add-package.md)
 默认采用原子发布：任一构建失败就不会发布本轮仓库更新；只有手动启用 `allow_partial_publish` 时才允许部分发布。
 
 构建环境按以下优先级使用依赖：
@@ -104,7 +100,7 @@ PKGBUILD 重新构建，不会直接安装同名预编译包。
 
 每个包在 `packages/<pkgbase>/update.toml` 中声明谁负责更新（`track`）和怎样构建
 （`strategy`）。新包只需这一份更新与构建策略声明；旧格式仅用于兼容。字段见
-[`docs/DEPENDENCY-MANAGEMENT.md`](docs/DEPENDENCY-MANAGEMENT.md)。
+[`docs/reference/dependency-management.md`](docs/reference/dependency-management.md)。
 
 **Sync AUR package sources** 工作流每天 `03:17 UTC` 检查 AUR 镜像包
 （`track = "aur"`）。AUR 有变化时，它会更新对应的 PKGBUILD、`.SRCINFO`、
@@ -120,7 +116,7 @@ PKGBUILD 重新构建，不会直接安装同名预编译包。
 soname 扫描脚本对已发布的包再做一次深度复查，发现依赖过时就自动触发重建。
 
 **Open upstream update pull requests** 工作流每天 `03:41 UTC` 运行
-`scripts/hub/update.py`，处理 `track` 为 `git-tag` / `git-tag-pin` / `git-commit` /
+`scripts/bot/update.py`，处理 `track` 为 `git-tag` / `git-tag-pin` / `git-commit` /
 `git-vcs` 且 `on_update = "pull-request"`（默认）的包。检测到上游变化时，它会在分支上
 更新 `PKGBUILD` 和 `.SRCINFO`，并开一个指派给仓库所有者的 PR，
 **不自动合并**。这是声明式更新（类似 lilac 的 `update_on`），和下面基于
@@ -166,7 +162,7 @@ tag、资产状态与 GitHub 计算的 sha256 digest，有新版时同时更新 
 暂存、提交或推送。导入后先审查 `PKGBUILD`、`.SRCINFO`、声明及辅助文件，再自行提交和推送。
 从本地目录导入时，`makepkg --printsrcinfo` 会执行 PKGBUILD 的顶层代码，只导入已审查的目录。
 `packages list` 显示包基名、版本、更新方式和构建策略；`packages show` 按包基名查看明细。
-选项和完整流程见 [`docs/add-aur-package.md`](docs/add-aur-package.md)。
+选项和完整流程见 [`docs/tutorials/add-package.md`](docs/tutorials/add-package.md)。
 
 ## 删除软件包
 
@@ -193,9 +189,9 @@ sudo pacman -S fzf github-cli
 ./manage.sh
 ```
 
-多选软件包时使用 `Tab`。完整说明见 `docs/package-management.md`。
+多选软件包时使用 `Tab`。完整说明见 [`docs/tutorials/package-management.md`](docs/tutorials/package-management.md)。
 
-构建依赖图、CI builder 和 repository integration tests 的设计见 `docs/build-pipeline.md`。
+构建依赖图、CI builder 和 repository integration tests 的设计见 [构建流水线](docs/operations/build-pipeline.md)。
 
 ## 构建产物
 
@@ -409,8 +405,8 @@ Docker 的 Linux 自托管 runner。
 4. **Repository 完整性**：发布前运行 `scripts/verify-repository.sh`，校验数据库引用、软件包资产、SHA256 和仓库配置。
 5. **管理与文档**：TUI 增加「审计全部软件包」，构建流水线文档同步记录实际维护流程。
 
-在此之上完成的构建平台升级见 `docs/build-platform.md`，架构现状与文档/代码差异见
-`docs/architecture-audit.md`；TUI 增加「构建计划与 DAG」「并行构建」「构建时序统计」
+在此之上完成的构建平台升级见 [构建平台](docs/operations/build-platform.md)，架构现状与文档/代码差异见
+[`docs/archive/architecture-audit-current.md`](docs/archive/architecture-audit-current.md)；TUI 增加「构建计划与 DAG」「并行构建」「构建时序统计」
 「修复中心」「运行环境自检（doctor）」。
 
 推荐的本地维护检查（与 CI integration job 执行同一套）：
@@ -429,9 +425,9 @@ bash tests/test-static-checks.sh
 ## 构建平台优化（P1–P5）
 
 - **P1 干净构建**：CachyOS-v3 `devtools` clean chroot；`workflow_dispatch` 可选 `legacy` / `chroot`（默认 legacy，push 始终 legacy）；基线按 builder generation / 架构 / 配置指纹缓存，每包工作副本用后删除；同批次 DAG 依赖通过只读临时仓库传递。切换前必须完成 3 次连续 chroot shadow-run 验收。
-- **P2 上游追踪**：两条互补的路。`packages/*/.nvchecker.toml` + 每日 workflow 报告漂移（开/更新 issue，不改 PKGBUILD）；`update.toml` 选择 Git track 并启用 `pull-request` 时，`scripts/hub/update.py` 在上游有变化时更新 PKGBUILD 并开 PR，不自动合并。
+- **P2 上游追踪**：两条互补的路。`packages/*/.nvchecker.toml` + 每日 workflow 报告漂移（开/更新 issue，不改 PKGBUILD）；`update.toml` 选择 Git track 并启用 `pull-request` 时，`scripts/bot/update.py` 在上游有变化时更新 PKGBUILD 并开 PR，不自动合并。
 - **P3 失败闭环**：失败分类与根因进入去重 issue，构建恢复后关闭。
 - **P4 升级验证**：隔离 chroot 中先安装已发布的旧版本，再升级到本轮新构建的包，抓只有升级才暴露的问题（provides/conflicts 写错、SONAME 变了但版本号没变、包改名残留）；对 `linuxqq-wayland-fix-git`（VCS）和 `folia`（跟 tag）执行，缺少旧版时明确标记不可验证。
 - **P5 质量留痕**：默认执行 `check()`；仅 `.skip-check` 可显式豁免；namcap issue 按包 + 规范化警告内容去重，`.namcap-ignore` 支持逐条长期豁免。
 
-详细设计、shadow-run 操作、回退条件、缓存监控和本地 rootless Podman 限制见 [`docs/build-pipeline.md`](docs/build-pipeline.md)。当前任务指针见 [`CURRENT-STATUS.md`](CURRENT-STATUS.md)；历史评审材料归档于 [`docs/archive/`](docs/archive/)。
+详细设计、shadow-run 操作、回退条件、缓存监控和本地 rootless Podman 限制见 [`docs/operations/build-pipeline.md`](docs/operations/build-pipeline.md)。当前任务指针见 [`CURRENT-STATUS.md`](CURRENT-STATUS.md)；历史评审材料归档于 [`docs/archive/`](docs/archive/)。

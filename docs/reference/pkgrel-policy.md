@@ -34,7 +34,7 @@ repack 包（payload 是上游预构建产物，本仓库不做编译链接）�
 
 - 作用范围：**一切 pkgrel 递增入口**（E1–E4 全部识别；E1/E2 是原生支持，E3/E4 是 2026-11-15 Phase 1 修复的）。
 - 语义：payload 与已发布版本逐字节相同时，抬高 pkgrel 只会发布一次"上游没动、版本号自己变了"的假升级。跳过时同版本重建走发布闸门的 already_published 路径（WARNING 或 SKIP no-op），不静默。
-- 与 `.build-strategy` 独立（见 [BUILD-STRATEGY.md](BUILD-STRATEGY.md)）。
+- 与 `.build-strategy` 独立（见 [构建策略](build-strategy.md)）。
 
 ## 写回（write-back）
 

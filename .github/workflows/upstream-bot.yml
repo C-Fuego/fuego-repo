@@ -54,7 +54,7 @@ jobs:
             args+=(--package "$ONLY_PACKAGE")
           fi
           set +e
-          python3 scripts/hub/update.py "${args[@]}" --json "$RUNNER_TEMP/plan.json" \
+          python3 scripts/bot/update.py "${args[@]}" --json "$RUNNER_TEMP/plan.json" \
             --report "$RUNNER_TEMP/plan.md" > /dev/null
           rc=$?
           set -e
@@ -105,7 +105,7 @@ jobs:
             # reports what it found; only 2 (a probe or write failed) is an
             # error here.
             rc=0
-            python3 scripts/hub/update.py --package "$pkg" --apply > /dev/null || rc=$?
+            python3 scripts/bot/update.py --package "$pkg" --apply > /dev/null || rc=$?
             if (( rc != 0 && rc != 10 )); then
               echo "::error::${pkg}: update.py --apply failed (exit ${rc})"
               exit "$rc"
@@ -133,7 +133,7 @@ jobs:
             # open PR's branch as stale info.
             git push --force origin "$branch"
             title="chore(${pkg}): update to upstream ${new_version}"
-            body="Automated by scripts/hub/update.py from packages/${pkg}/update.toml.
+            body="Automated by scripts/bot/update.py from packages/${pkg}/update.toml.
 
           Upstream: $new_version
 

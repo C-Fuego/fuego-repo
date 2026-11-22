@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Cross-check hub declarations against the readers they are meant to replace.
+"""Cross-check bot declarations against the readers they are meant to replace.
 
-For legacy metadata, `hub.declaration` reads the package files on its own.
+For legacy metadata, `bot.declaration` reads the package files on its own.
 That is only safe while the two readings agree: the moment they drift, one consumer
 acts on a package the other describes differently, and the repository has
 exactly one description that no longer matches reality.
@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from hub import declaration as decl  # noqa: E402
+from bot import declaration as decl  # noqa: E402
 
 
 def _load_manifest_gate():
@@ -150,7 +150,7 @@ def compare_trackers(root: Path, declarations, mismatches, notes):
 
     for name in sorted(set(definitions) | set(ours_definitions)):
         if name not in definitions:
-            mismatches.append(f"MISMATCH tracker {name!r}: declared by the hub only")
+            mismatches.append(f"MISMATCH tracker {name!r}: declared by the bot only")
         elif name not in ours_definitions:
             mismatches.append(f"MISMATCH tracker {name!r}: known to nvchecker only")
         else:
@@ -168,7 +168,7 @@ def compare_trackers(root: Path, declarations, mismatches, notes):
 
     notes.append(
         f"compared {len(definitions)} nvchecker tracker(s) from the existing "
-        f"loader against {len(ours_definitions)} from the hub"
+        f"loader against {len(ours_definitions)} from the bot"
     )
 
 

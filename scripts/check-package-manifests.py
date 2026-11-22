@@ -66,7 +66,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from hub import declaration as decl
+from bot import declaration as decl
 
 PACKAGE_NAME = re.compile(r"^[A-Za-z0-9@._+-]+$")
 PKGREL = re.compile(r"^[0-9]+(\.[0-9]+)?$")

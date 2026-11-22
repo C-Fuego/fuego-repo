@@ -26,8 +26,8 @@ from pathlib import Path
 # The preview should not create __pycache__ files in the checkout either.
 sys.dont_write_bytecode = True
 
-from hub import declaration as decl  # noqa: E402
-from hub.update import ON_UPDATE, TRACKS, UPDATE_FILENAME  # noqa: E402
+from bot import declaration as decl  # noqa: E402
+from bot.update import ON_UPDATE, TRACKS, UPDATE_FILENAME  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 UPSTREAM_BOT = ".github/workflows/upstream-bot.yml"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for scripts/hub/update.py -- the declarative upstream updater.
+"""Tests for scripts/bot/update.py -- the declarative upstream updater.
 
 Two layers:
   * unit: the closed set of pkgver_from functions (no network, no repo)
@@ -22,10 +22,10 @@ from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-_SPEC = importlib.util.spec_from_file_location("hub_update", ROOT / "scripts/hub/update.py")
+_SPEC = importlib.util.spec_from_file_location("bot_update", ROOT / "scripts/bot/update.py")
 assert _SPEC is not None and _SPEC.loader is not None
 _MODULE = importlib.util.module_from_spec(_SPEC)
-sys.modules["hub_update"] = _MODULE
+sys.modules["bot_update"] = _MODULE
 _SPEC.loader.exec_module(_MODULE)
 
 apply_version_function = _MODULE.apply_version_function

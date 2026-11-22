@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LINTER = ROOT / "scripts" / "check-package-manifests.py"
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from hub import declaration as decl
+from bot import declaration as decl
 
 
 def git_environment():

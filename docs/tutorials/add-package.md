@@ -33,7 +33,7 @@ PKGBUILD 顶层代码，只能导入已审查的本地目录，并以普通用�
 - 终端交互模式会询问未提供的更新参数。`--non-interactive` 禁止询问；应显式传入需要的参数。未指定更新方式时，若有 `pkgver()` 且能识别唯一的未固定 Git 源，默认 `git-vcs`，否则默认 `manual`。
 - 自有更新工作流可用 `--track workflow --workflow .github/workflows/example.yml`；该路径必须存在并由 Git 跟踪才能通过清单校验。Git 更新方式可用 `--track git-tag` 等，并以 `--git` 指定上游地址。
 
-全部选项见 `./manage.sh add --help`；声明格式见 [依赖管理](DEPENDENCY-MANAGEMENT.md)。
+完整选项见 [CLI 参考](../reference/manage-cli.md)，声明格式见 [`update.toml` 参考](../reference/update-toml.md)。
 
 ## 复查并提交
 

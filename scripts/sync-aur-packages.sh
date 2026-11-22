@@ -4,7 +4,7 @@ set -Eeuo pipefail
 script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 repo_root="$(cd -P -- "${REPO_ROOT:-$script_root}" && pwd)"
 readonly repo_root
-aur_helper="$script_root/scripts/hub/aur.py"
+aur_helper="$script_root/scripts/bot/aur.py"
 
 # 退出码：0 = 全部同步成功；3 = 部分包失败已隔离（成功包照常落位待提交，失败
 # 清单在 SYNC_FAILURES_FILE）；1 = 全部失败或环境级错误；2 = 用法/配置错误。

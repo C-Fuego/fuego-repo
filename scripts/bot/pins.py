@@ -44,7 +44,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from hub import declaration as decl  # noqa: E402
+from bot import declaration as decl  # noqa: E402
 
 PINNED = "PINNED"
 AT_HEAD = "AT-HEAD"
