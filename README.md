@@ -108,6 +108,14 @@ PKGBUILD 重新构建，不会直接安装同名预编译包。
 **Maintenance** 工作流每天 `16:17 UTC` 运行：清理过期 Artifact，并用同一个
 soname 扫描脚本对已发布的包再做一次深度复查，发现依赖过时就自动触发重建。
 
+**Open upstream update pull requests** 工作流每天 `03:41 UTC` 运行
+`scripts/hub/update.py`。每个带 `packages/<name>/update.toml` 的包声明它跟哪种
+上游（`git-tag` / `git-commit` / `git-vcs`）；上游一动，它就在一个分支上改好
+`PKGBUILD`（以及重新生成的 `.SRCINFO`）并开一个 assign 给仓库所有者的 PR，
+**不自动合并**。这是声明式更新（类似 lilac 的 `update_on`），和下面基于
+`.nvchecker.toml` 的 issue 追踪互补：那个只报告漂移，这个直接给出可审阅的改动。
+
+
 **Sync dae release** 工作流每天 `02:17 UTC` 运行 `scripts/sync-dae-release.sh`：
 比对 dae 上游的发布标记，有更新时重建 `daed-emo` 并等待这次构建结束。
 
@@ -413,7 +421,7 @@ bash tests/test-static-checks.sh
 ## 构建平台优化（P1–P5）
 
 - **P1 干净构建**：CachyOS-v3 `devtools` clean chroot；`workflow_dispatch` 可选 `legacy` / `chroot`（默认 legacy，push 始终 legacy）；基线按 builder generation / 架构 / 配置指纹缓存，每包工作副本用后删除；同批次 DAG 依赖通过只读临时仓库传递。切换前必须完成 3 次连续 chroot shadow-run 验收。
-- **P2 上游追踪**：`packages/*/.nvchecker.toml` + 每日 workflow；新版本开/更新 issue，不自动修改 PKGBUILD。
+- **P2 上游追踪**：两条互补的路。`packages/*/.nvchecker.toml` + 每日 workflow 报告漂移（开/更新 issue，不改 PKGBUILD）；`packages/*/update.toml` + `scripts/hub/update.py` 是可选的声明式更新（`git-tag` / `git-commit` / `git-vcs`），上游一动就改好 PKGBUILD 并开 PR，不自动合并。
 - **P3 失败闭环**：失败分类与根因进入去重 issue，构建恢复后关闭。
 - **P4 升级验证**：隔离 chroot 中先安装已发布的旧版本，再升级到本轮新构建的包，抓只有升级才暴露的问题（provides/conflicts 写错、SONAME 变了但版本号没变、包改名残留）；对 `linuxqq-wayland-fix-git`（VCS）和 `folia`（跟 tag）执行，缺少旧版时明确标记不可验证。
 - **P5 质量留痕**：默认执行 `check()`；仅 `.skip-check` 可显式豁免；namcap issue 按包 + 规范化警告内容去重，`.namcap-ignore` 支持逐条长期豁免。

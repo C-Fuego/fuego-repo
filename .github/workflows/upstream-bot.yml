@@ -1,0 +1,146 @@
+name: Open upstream update pull requests
+
+# The declarative half of the update story.  Every package that carries a
+# packages/<name>/update.toml is probed here; when its upstream has moved, this
+# job rewrites PKGBUILD (+ .SRCINFO) on a branch and opens a pull request
+# assigned to the maintainer.  Nothing is merged automatically -- a human
+# reviews every version bump.
+#
+# This complements (does not replace) the .nvchecker.toml issue tracker in
+# upstream-check.yml: that one reports drift as an issue, this one produces a
+# ready-to-merge change.
+
+on:
+  schedule:
+    # Daily. Offset from every other cron in this repository so the jobs never
+    # pile onto one GitHub runner slot.
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Only update this package (blank = every package with update.toml)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-update-bot
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Probe upstream and plan updates
+        id: plan
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          args=()
+          if [[ -n "${{ inputs.package }}" ]]; then
+            args+=(--package "${{ inputs.package }}")
+          fi
+          set +e
+          python3 scripts/hub/update.py "${args[@]}" --json "$RUNNER_TEMP/plan.json" \
+            --report "$RUNNER_TEMP/plan.md" > /dev/null
+          rc=$?
+          set -e
+          # 0 = everything current, 10 = updates available, 2 = a probe failed.
+          case "$rc" in
+            0) echo "available=false" >> "$GITHUB_OUTPUT" ;;
+            10) echo "available=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::update.py failed to probe upstream (exit $rc)"; exit "$rc" ;;
+          esac
+          {
+            echo '### Upstream update plan'
+            echo
+            cat "$RUNNER_TEMP/plan.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open a pull request per available update
+        if: ${{ steps.plan.outputs.available == 'true' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          export MAKEFLAGS=""
+          git config user.name 'fuego-repo bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # Packages that have an update, one per line.
+          mapfile -t packages < <(
+            python3 - "$RUNNER_TEMP/plan.json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          for plan in data['plans']:
+              if plan['available']:
+                  print(plan['package'])
+          PY
+          )
+
+          for pkg in "${packages[@]}"; do
+            branch="chore/upstream/${pkg}"
+            # Rebase a stale branch off main so the PR is always current.
+            git checkout -B "$branch" origin/main
+            python3 scripts/hub/update.py --package "$pkg" --apply > /dev/null
+            if git diff --quiet; then
+              echo "::notice::${pkg}: update.py reported an update but produced no diff; skipping"
+              git checkout -- . || true
+              continue
+            fi
+            git add "packages/${pkg}/PKGBUILD" "packages/${pkg}/.SRCINFO"
+            new_version="$(python3 - "$RUNNER_TEMP/plan.json" "$pkg" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          for plan in data['plans']:
+              if plan['package'] == sys.argv[2]:
+                  print(plan['new'])
+          PY
+          )"
+            git commit -m "chore(${pkg}): track upstream ${new_version:0:12}"
+            git push --force-with-lease origin "$branch"
+            # Idempotent: open the PR only when one is not already open for it.
+            if [[ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[0].number')" ]]; then
+              gh pr create \
+                --head "$branch" \
+                --base main \
+                --title "chore(${pkg}): update to upstream ${new_version:0:12}" \
+                --body "Automated by scripts/hub/update.py from packages/${pkg}/update.toml.
+
+          Upstream: $new_version
+
+          Review the PKGBUILD diff (pkgver commitment / pinned commit / pkgrel bump) before merging." \
+                --assignee "${{ github.repository_owner }}"
+            else
+              echo "PR already open for ${branch}; branch updated."
+            fi
+            git checkout main
+          done
+
+  notify:
+    needs: [update]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout (for the local composite action)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Update the failure issue
+        uses: $/.github/actions/notify-failure
+        with:
+          title: "[CI] Upstream update bot failed"
+          outcome: ${{ needs.update.result == 'failure' && 'failure' || (needs.update.result == 'success' && 'recovered' || 'none') }}

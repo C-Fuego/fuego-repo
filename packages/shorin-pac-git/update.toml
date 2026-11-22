@@ -1,0 +1,3 @@
+track = "git-vcs"
+git = "https://github.com/SHORiN-KiWATA/shorin-pac"
+on_update = "pull-request"

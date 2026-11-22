@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""Tests for scripts/hub/update.py -- the declarative upstream updater.
+
+Two layers:
+  * unit: the closed set of pkgver_from functions (no network, no repo)
+  * integration: a throwaway package + fake git so plan/apply can be exercised
+    without touching upstream or the real tree
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+_SPEC = importlib.util.spec_from_file_location("hub_update", ROOT / "scripts/hub/update.py")
+assert _SPEC is not None and _SPEC.loader is not None
+_MODULE = importlib.util.module_from_spec(_SPEC)
+sys.modules["hub_update"] = _MODULE
+_SPEC.loader.exec_module(_MODULE)
+
+apply_version_function = _MODULE.apply_version_function
+
+
+class VersionFunctionTests(unittest.TestCase):
+    def test_strip_v(self):
+        self.assertEqual("0.1.3", apply_version_function("v0.1.3", "strip_v"))
+
+    def test_identity_and_default(self):
+        self.assertEqual("v0.1.3", apply_version_function("v0.1.3", "identity"))
+        self.assertEqual("1.2.3", apply_version_function("1.2.3", ""))
+
+    def test_date_version(self):
+        self.assertEqual("2026.11.22", apply_version_function("2026-11-22", "date_version"))
+        self.assertEqual("2026.11.22", apply_version_function("20261122", "date_version"))
+        self.assertEqual("2026.11.22", apply_version_function("v2026.11.22", "date_version"))
+
+    def test_regex_extract(self):
+        self.assertEqual(
+            "1.2.3",
+            apply_version_function("release-v1.2.3-final", r"regex_extract:(\d+\.\d+\.\d+)"),
+        )
+
+    def test_unknown_function_is_an_error_not_a_passthrough(self):
+        with self.assertRaises(ValueError):
+            apply_version_function("v1", "bogus")
+
+    def test_regex_extract_without_match_is_an_error(self):
+        with self.assertRaises(ValueError):
+            apply_version_function("v1", r"regex_extract:(\d+\.\d+\.\d+)")
+
+
+class PlanApplyTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _make_package(self, name: str, pkgbuild: str, srcinfo: str, update_toml: str):
+        d = self.tmp / "packages" / name
+        d.mkdir(parents=True)
+        (d / "PKGBUILD").write_text(pkgbuild, encoding="utf-8")
+        (d / ".SRCINFO").write_text(srcinfo, encoding="utf-8")
+        (d / "update.toml").write_text(update_toml, encoding="utf-8")
+        return d
+
+    def test_read_specs_rejects_bad_track(self):
+        self._make_package(
+            "demo",
+            "pkgname=demo\npkgver=1.0\npkgrel=1\n",
+            "pkgbase = demo\n\tpkgver = 1.0\n\tpkgrel = 1\n",
+            'track = "nonsense"\ngit = "https://example/x"\n',
+        )
+        specs, errors = _MODULE.read_specs(self.tmp, None)
+        self.assertEqual([], specs)
+        self.assertTrue(any("track must be one of" in e for e in errors))
+
+    def test_read_specs_reads_pkgver_from(self):
+        self._make_package(
+            "demo",
+            "pkgname=demo\npkgver=1.0\npkgrel=1\n",
+            "pkgbase = demo\n\tpkgver = 1.0\n\tpkgrel = 1\n",
+            'track = "git-tag"\ngit = "https://example/x"\n'
+            'tag_pattern = "^v\\\\d+\\\\.\\\\d+$"\npkgver_from = "identity"\n',
+        )
+        specs, errors = _MODULE.read_specs(self.tmp, None)
+        self.assertEqual([], errors)
+        self.assertEqual(1, len(specs))
+        self.assertEqual("identity", specs[0].pkgver_from)
+
+    def test_pkgrel_next_matches_policy_shape(self):
+        self.assertEqual("2", _MODULE._pkgrel_next("1"))
+        self.assertEqual("2.7", _MODULE._pkgrel_next("2.6"))
+        self.assertIsNone(_MODULE._pkgrel_next("1.2.3"))
+        self.assertIsNone(_MODULE._pkgrel_next("1a"))
+
+
+if __name__ == "__main__":
+    unittest.main()
