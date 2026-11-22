@@ -32,7 +32,6 @@ read -r -d '' expected <<'EOF' || true
 package-manifest-policy
 bot-declarations
 package-manifest-tests
-package-count
 select-packages
 elf-soname
 rebuild-triggers

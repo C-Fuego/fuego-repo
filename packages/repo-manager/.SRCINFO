@@ -1,7 +1,7 @@
 pkgbase = repo-manager
 	pkgdesc = TUI maintenance entry point for a fuego-repo Arch package repository
 	pkgver = 0.1.0
-	pkgrel = 1
+	pkgrel = 2
 	url = https://github.com/C-Fuego/fuego-repo
 	arch = any
 	license = custom
