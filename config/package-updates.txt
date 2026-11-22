@@ -38,3 +38,8 @@ zmatrix manual Built from C-Fuego/Rezig, pinned by commit; bump _commit and pkgr
 zpipes manual Built from C-Fuego/Rezig, pinned by commit; bump _commit and pkgrel together when upstream moves.
 shorin-contrib-git manual pkgver() counts upstream commits; a sync would only rewrite a version makepkg derives anyway.
 shorin-pac-git manual pkgver() counts upstream commits; a sync would only rewrite a version makepkg derives anyway.
+
+# The keyring ships the repository's own signing key and has no upstream to
+# track; rotate it by hand (bump pkgver to the rotation date) when the key
+# changes, which .nvchecker.toml surfaces as a changed checksum.
+fuego-repo-keyring manual Ships the repository signing key; bump pkgver to the rotation date when the key changes.

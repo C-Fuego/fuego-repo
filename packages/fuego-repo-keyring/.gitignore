@@ -1,0 +1,9 @@
+# Build residue never leaves the machine.
+pkg/
+src/
+*.pkg*
+*.orig
+!PKGBUILD
+!.SRCINFO
+!.build-strategy
+!.nvchecker.toml

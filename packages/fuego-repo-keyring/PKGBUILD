@@ -1,0 +1,59 @@
+# Maintainer: C-Fuego
+# Installs the fuego-repo master signing key into pacman's keyring so that
+# `[fuego-repo]` can be used with SigLevel = Required without the manual
+# `pacman-key --add && pacman-key --lsign-key` dance.
+#
+# The key is fetched from the published repository itself: the same bytes
+# create-repository.sh exports to <repo>-key.asc, so this package always ships
+# the key that actually signs the database and packages.  There is nothing to
+# build -- the whole point is to carry that one file and register it.
+pkgname=fuego-repo-keyring
+pkgver=20261122
+pkgrel=1
+pkgdesc="Signing key for the fuego-repo pacman repository"
+arch=('any')
+url="https://ignacio.dpdns.org/x86_64-v3"
+license=('custom')
+depends=('pacman')
+# No checksum: the key lives in an object store whose bytes are the authority,
+# and pinning a hash here would need a bump every time the key is rotated.
+# makepkg accepts SKIP for a file whose integrity is established downstream
+# (the repository's own signature chain).
+source=("fuego-repo-key.asc::https://ignacio.dpdns.org/x86_64-v3/fuego-repo-key.asc")
+sha256sums=('SKIP')
+
+package() {
+  install -Dm644 "$srcdir/fuego-repo-key.asc" \
+    "$pkgdir/usr/share/pacman/keyrings/fuego-repo.asc"
+
+  # trusted: keys pacman may use to validate this repository's database.
+  printf '%s\n' "2200497908F87275:4:" > "$pkgdir/usr/share/pacman/keyrings/fuego-repo-trusted"
+  # revoked: empty on purpose.
+  : > "$pkgdir/usr/share/pacman/keyrings/fuego-repo-revoked"
+
+  # Register the key on install and drop it on removal, so `pacman -S
+  # fuego-repo-keyring` is all a new machine needs.
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/libalpm/hooks/90-fuego-repo-keyring.hook" <<'HOOK'
+[Trigger]
+Operation = Install
+Type = Package
+Target = fuego-repo-keyring
+
+[Action]
+Description = Registering the fuego-repo signing key...
+When = PostTransaction
+Exec = /usr/bin/pacman-key --populate fuego-repo
+HOOK
+
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/libalpm/hooks/91-fuego-repo-keyring-remove.hook" <<'HOOK'
+[Trigger]
+Operation = Remove
+Type = Package
+Target = fuego-repo-keyring
+
+[Action]
+Description = Removing the fuego-repo signing key...
+When = PostTransaction
+Exec = /usr/bin/pacman-key --updatedb
+HOOK
+}

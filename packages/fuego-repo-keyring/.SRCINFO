@@ -1,0 +1,12 @@
+pkgbase = fuego-repo-keyring
+	pkgdesc = Signing key for the fuego-repo pacman repository
+	pkgver = 20261122
+	pkgrel = 1
+	url = https://ignacio.dpdns.org/x86_64-v3
+	arch = any
+	license = custom
+	depends = pacman
+	source = fuego-repo-key.asc::https://ignacio.dpdns.org/x86_64-v3/fuego-repo-key.asc
+	sha256sums = SKIP
+
+pkgname = fuego-repo-keyring

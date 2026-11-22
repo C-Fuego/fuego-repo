@@ -1,0 +1,10 @@
+# The signing key changes only when the repository key is rotated, which is a
+# deliberate act and not something an updater can detect by version.  Track the
+# published key file itself so a rotation surfaces as a changed checksum, and
+# keep the version manual.
+[__config__]
+oldver = "20260101"
+
+[fuego-repo-keyring]
+source = "https://ignacio.dpdns.org/x86_64-v3/fuego-repo-key.asc"
+prefix = "sha256:"

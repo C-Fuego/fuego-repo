@@ -3,7 +3,7 @@
 这个项目把 `packages/*/PKGBUILD` 自动构建成 Arch Linux `x86_64`
 软件包，并在私有 `repo` 分支维护标准 pacman 仓库数据库。
 
-当前维护 16 个 package base。
+当前维护 17 个 package base。
 
 ## Features
 
@@ -32,6 +32,7 @@
 | --- | --- | --- |
 | `dsh-desktop-linux` | `x86_64` | DeepSeek Harness 桌面版（上游 ffyfox 的 Electron 壳 + 内嵌 dsh 运行时）；直接重新打包上游 CI 产出的 Arch 安装包，安装到 `/opt/deepseek-harness-desktop` |
 | `ffmpeg-full` | `x86_64` | 启用大量编解码器、CUDA 和 Whisper 支持的 FFmpeg |
+| `fuego-repo-keyring` | `any` | 本仓库的签名公钥；装上它即把密钥注册进 pacman keyring，`[fuego-repo]` 可直接用 `SigLevel = Required` |
 | `linuxqq-wayland-fix-git` | `x86_64` | 修复 Linux QQ 在 Wayland 下的屏幕共享、声音共享、剪贴板和截图 |
 | `mpeghdec` | `x86_64` | Fraunhofer MPEG-H 解码器 |
 | `quirc` | `x86_64` | QR 解码库 |
