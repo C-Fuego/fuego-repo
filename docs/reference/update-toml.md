@@ -46,6 +46,24 @@ An empty value is normalized to `strip_v`. The declaration reader accepts these 
 - `issue`: excluded from the PR updater; use a separate issue-reporting mechanism if configured.
 - `none`: excluded from automated update actions.
 
+## Optional schedule
+
+A package may limit when the central updater probes it:
+
+```toml
+[schedule]
+cron = "0 0,12 * * *"
+timezone = "Asia/Shanghai"
+```
+
+`cron` uses five fields (minute, hour, day of month, month, day of week) and
+supports lists, ranges, steps, and `*`. `timezone` is an IANA timezone name.
+When `[schedule]` is omitted, the repository default is twice daily at 00:00
+and 12:00 in `Asia/Shanghai`. The scheduled workflow runs at the corresponding
+UTC times and passes `--due-only`; manual dispatches ignore the schedule so a
+maintainer can force an immediate check. The schedule controls probing only;
+PKGBUILD dependencies remain the source of build ordering and install tests.
+
 The Git updater only reads eligible Git declarations. Probe or declaration errors return failure, not “up to date.” Exit status is `0` when current, `10` when an update is available, and `2` when a check/apply fails. It only writes PKGBUILD and `.SRCINFO` with `--apply`; the scheduled workflow performs this in a branch and proposes a PR.
 
 Recognized fields are strings with surrounding whitespace stripped. Unknown top-level keys are ignored. The manifest checker also verifies that a `workflow` path is Git-tracked (or exists on disk when Git tracking information is unavailable).

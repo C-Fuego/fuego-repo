@@ -369,7 +369,12 @@ else:
     if not match:
         fail('source=() has no 070-ffmpeg-whisper.cpp-fix-pkgconfig.patch entry')
     position = source_decl.end() + match.end()
-    text = text[:position] + f"\n{match.group(1)}'{patch_name}'" + text[position:]
+    line_end = text.find("\n", position)
+    if line_end < 0:
+        line_end = len(text)
+    else:
+        line_end += 1
+    text = text[:line_end] + f"{match.group(1)}'{patch_name}'\n" + text[line_end:]
 
     # The source insertion above moved everything that follows it, so the
     # sha256sums offsets from the original scan are no longer valid.

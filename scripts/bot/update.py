@@ -45,7 +45,9 @@ import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -71,6 +73,8 @@ class UpdateSpec:
     tag_pattern: str = ""
     pkgver_from: str = "strip_v"
     on_update: str = "pull-request"
+    schedule_cron: str = decl.DEFAULT_SCHEDULE
+    schedule_timezone: str = decl.DEFAULT_TIMEZONE
 
 
 @dataclass
@@ -88,9 +92,46 @@ class Plan:
     directory: Path = field(default_factory=lambda: ROOT)
 
 
+def _cron_matches(field_text: str, value: int, minimum: int, maximum: int) -> bool:
+    allowed: set[int] = set()
+    for item in field_text.split(","):
+        base, slash, step_text = item.partition("/")
+        step = int(step_text) if slash else 1
+        if base == "*":
+            start, end = minimum, maximum
+        elif "-" in base:
+            start, end = map(int, base.split("-", 1))
+        else:
+            start = end = int(base)
+        allowed.update(range(start, end + 1, step))
+    return value in allowed
+
+
+def schedule_due(spec: UpdateSpec, now: datetime) -> bool:
+    """Test the current instant against a validated package-local cron."""
+    local = now.astimezone(ZoneInfo(spec.schedule_timezone))
+    minute, hour, day, month, weekday = spec.schedule_cron.split()
+    cron_weekday = (local.weekday() + 1) % 7
+    day_matches = _cron_matches(day, local.day, 1, 31)
+    weekday_matches = _cron_matches(weekday, cron_weekday, 0, 7) or (
+        cron_weekday == 0 and _cron_matches(weekday, 7, 0, 7)
+    )
+    if day != "*" and weekday != "*":
+        calendar_matches = day_matches or weekday_matches
+    else:
+        calendar_matches = day_matches and weekday_matches
+    return (
+        _cron_matches(minute, local.minute, 0, 59)
+        and _cron_matches(hour, local.hour, 0, 23)
+        and _cron_matches(month, local.month, 1, 12)
+        and calendar_matches
+    )
+
+
 def read_specs(root: Path, only: set[str] | None = None, *,
-               action: str | None = None) -> tuple[list[UpdateSpec], list[str]]:
-    """Read git update specs, optionally selecting a single on_update action."""
+               action: str | None = None, due_only: bool = False,
+               now: datetime | None = None) -> tuple[list[UpdateSpec], list[str]]:
+    """Read git update specs and optionally select action/due packages."""
     specs: list[UpdateSpec] = []
     errors: list[str] = []
     present: set[str] = set()
@@ -125,12 +166,27 @@ def read_specs(root: Path, only: set[str] | None = None, *,
             continue
         if action is not None and on_update != action:
             continue
-        specs.append(UpdateSpec(
+        schedule = data.get("schedule")
+        if schedule is None:
+            schedule = {}
+        if not isinstance(schedule, dict):
+            errors.append(f"{name}: schedule must be a table")
+            continue
+        cron, timezone, schedule_errors = decl.validate_schedule(
+            schedule.get("cron", decl.DEFAULT_SCHEDULE),
+            schedule.get("timezone", decl.DEFAULT_TIMEZONE), path,
+        )
+        if schedule_errors:
+            errors.extend(f"{name}: {error}" for error in schedule_errors)
+            continue
+        spec = UpdateSpec(
             package=name, directory=directory, track=track, git=git.strip(),
             tag_pattern=str(data.get("tag_pattern", "")).strip(),
             pkgver_from=str(data.get("pkgver_from", "strip_v")).strip() or "strip_v",
-            on_update=on_update,
-        ))
+            on_update=on_update, schedule_cron=cron, schedule_timezone=timezone,
+        )
+        if not due_only or schedule_due(spec, now or datetime.now(ZoneInfo("UTC"))):
+            specs.append(spec)
     if only is not None:
         for missing in sorted(only - present):
             errors.append(f"{missing}: no {UPDATE_FILENAME}")
@@ -430,6 +486,8 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--package", action="append", default=None, metavar="NAME")
+    parser.add_argument("--due-only", action="store_true",
+                        help="probe only packages whose schedule matches the current time")
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--json", type=Path, default=None)
     parser.add_argument("--apply", action="store_true",
@@ -437,7 +495,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     only = set(args.package) if args.package else None
-    specs, errors = read_specs(args.root, only, action="pull-request")
+    specs, errors = read_specs(args.root, only, action="pull-request", due_only=args.due_only)
     plans = [plan_package(spec) for spec in specs]
     report = render_plan(plans, errors)
 

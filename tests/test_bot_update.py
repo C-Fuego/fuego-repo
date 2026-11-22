@@ -85,13 +85,25 @@ class PlanApplyTests(unittest.TestCase):
         self.assertEqual([], specs)
         self.assertTrue(any("track must be one of" in e for e in errors))
 
+    def test_schedule_due_uses_package_timezone(self):
+        spec = _MODULE.UpdateSpec("demo", self.tmp, "git-tag", "https://example/x", schedule_cron="0 0,12 * * *", schedule_timezone="Asia/Shanghai")
+        self.assertTrue(_MODULE.schedule_due(spec, _MODULE.datetime(2026, 11, 22, 4, 0, tzinfo=_MODULE.ZoneInfo("UTC"))))
+        self.assertFalse(_MODULE.schedule_due(spec, _MODULE.datetime(2026, 11, 22, 5, 0, tzinfo=_MODULE.ZoneInfo("UTC"))))
+
+    def test_schedule_validation_rejects_bad_table(self):
+        self._make_package("demo", "pkgname=demo\npkgver=1.0\npkgrel=1\n", "", 'track = "git-tag"\ngit = "https://example/x"\nschedule = "nope"\n')
+        specs, errors = _MODULE.read_specs(self.tmp, None)
+        self.assertEqual([], specs)
+        self.assertTrue(any("schedule must be a table" in error for error in errors))
+
     def test_read_specs_reads_pkgver_from(self):
         self._make_package(
             "demo",
             "pkgname=demo\npkgver=1.0\npkgrel=1\n",
             "pkgbase = demo\n\tpkgver = 1.0\n\tpkgrel = 1\n",
             'track = "git-tag"\ngit = "https://example/x"\n'
-            'tag_pattern = "^v\\\\d+\\\\.\\\\d+$"\npkgver_from = "identity"\n',
+            'tag_pattern = "^v\\\\d+\\\\.\\\\d+$"\npkgver_from = "identity"\n'
+            '[schedule]\ncron = "0 0,12 * * *"\ntimezone = "Asia/Shanghai"\n',
         )
         specs, errors = _MODULE.read_specs(self.tmp, None)
         self.assertEqual([], errors)

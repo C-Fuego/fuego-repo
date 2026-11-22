@@ -26,6 +26,7 @@ import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 PACKAGE_ROOT = "packages"
 UPDATE_FILENAME = "update.toml"
@@ -42,6 +43,8 @@ REGISTRY_KINDS = ("manual", "workflow")
 GIT_TRACKS = ("git-tag", "git-tag-pin", "git-commit", "git-vcs")
 UPDATE_TRACKS = ("aur", *REGISTRY_KINDS, *GIT_TRACKS)
 ON_UPDATE = ("pull-request", "issue", "none")
+DEFAULT_SCHEDULE = "0 0,12 * * *"
+DEFAULT_TIMEZONE = "Asia/Shanghai"
 REBUILD_ON_KINDS = ("soname", "package")
 
 AUR_URL = re.compile(r"^https://aur\.archlinux\.org/(?P<name>[A-Za-z0-9@._+-]+)\.git$")
@@ -215,6 +218,49 @@ def normalize_build_strategy(value: object) -> str | None:
     return value if value in BUILD_STRATEGIES else None
 
 
+def validate_schedule(value: object, timezone: object, path: Path) -> tuple[str, str, list[str]]:
+    """Validate the small five-field cron subset and IANA timezone."""
+    errors: list[str] = []
+    if not isinstance(value, str) or not value.strip():
+        errors.append(f"{path.name}: schedule.cron must be a non-empty string")
+        return "", "", errors
+    cron = value.strip()
+    fields = cron.split()
+    if len(fields) != 5:
+        errors.append(f"{path.name}: schedule.cron must have five cron fields")
+    else:
+        ranges = ((0, 59), (0, 23), (1, 31), (1, 12), (0, 7))
+        for field_text, (minimum, maximum) in zip(fields, ranges):
+            for item in field_text.split(","):
+                base, slash, step = item.partition("/")
+                if slash and (not step.isdigit() or int(step) < 1):
+                    errors.append(f"{path.name}: invalid cron step {item!r}")
+                    continue
+                bounds = base.split("-") if base != "*" else ["*"]
+                if len(bounds) == 2:
+                    try:
+                        start, end = map(int, bounds)
+                        if start < minimum or end > maximum or start > end:
+                            raise ValueError
+                    except ValueError:
+                        errors.append(f"{path.name}: cron value {item!r} is out of range")
+                elif len(bounds) == 1 and bounds[0] != "*":
+                    if not bounds[0].isdigit() or not minimum <= int(bounds[0]) <= maximum:
+                        errors.append(f"{path.name}: cron value {item!r} is out of range")
+                elif len(bounds) > 2:
+                    errors.append(f"{path.name}: invalid cron field {item!r}")
+    if not isinstance(timezone, str) or not timezone.strip():
+        errors.append(f"{path.name}: schedule.timezone must be a non-empty IANA timezone")
+        zone = ""
+    else:
+        zone = timezone.strip()
+        try:
+            ZoneInfo(zone)
+        except (ZoneInfoNotFoundError, ValueError):
+            errors.append(f"{path.name}: unknown IANA timezone {zone!r}")
+    return cron, zone, errors
+
+
 def read_update(path: Path) -> tuple[UpdateSource | None, str | None, list[str]]:
     """Read a package update.toml, including its required build strategy."""
     try:
@@ -234,6 +280,19 @@ def read_update(path: Path) -> tuple[UpdateSource | None, str | None, list[str]]
         if required and not value:
             errors.append(f"{path.name}: {key} must be a non-empty string")
         return value
+
+    schedule = data.get("schedule")
+    if schedule is not None:
+        if not isinstance(schedule, dict):
+            errors.append(f"{path.name}: schedule must be a table")
+        else:
+            unknown = sorted(set(schedule) - {"cron", "timezone"})
+            if unknown:
+                errors.append(f"{path.name}: unknown schedule field(s): {', '.join(unknown)}")
+            _, _, schedule_errors = validate_schedule(
+                schedule.get("cron"), schedule.get("timezone", DEFAULT_TIMEZONE), path
+            )
+            errors.extend(schedule_errors)
 
     track = field("track")
     value = field("strategy")

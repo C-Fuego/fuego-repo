@@ -367,6 +367,9 @@ def packages_overview(root: Path, args: argparse.Namespace) -> None:
         for key in ("url", "commit", "git", "tag_pattern", "pkgver_from", "on_update", "reason", "workflow"):
             if key in spec:
                 print(f"{key}: {spec[key]}")
+        schedule = spec.get("schedule")
+        if isinstance(schedule, dict):
+            print(f"schedule: {schedule.get('cron', decl.DEFAULT_SCHEDULE)} ({schedule.get('timezone', decl.DEFAULT_TIMEZONE)})")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -12,9 +12,8 @@ name: Open upstream update pull requests
 
 on:
   schedule:
-    # Daily. Offset from every other cron in this repository so the jobs never
-    # pile onto one GitHub runner slot.
-    - cron: '41 3 * * *'
+    # Twice daily at 00:00 and 12:00 Asia/Shanghai (04:00 and 16:00 UTC).
+    - cron: '0 4,16 * * *'
   workflow_dispatch:
     inputs:
       package:
@@ -53,8 +52,12 @@ jobs:
           if [[ -n "$ONLY_PACKAGE" ]]; then
             args+=(--package "$ONLY_PACKAGE")
           fi
+          due_args=()
+          if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
+            due_args+=(--due-only)
+          fi
           set +e
-          python3 scripts/bot/update.py "${args[@]}" --json "$RUNNER_TEMP/plan.json" \
+          python3 scripts/bot/update.py "${args[@]}" "${due_args[@]}" --json "$RUNNER_TEMP/plan.json" \
             --report "$RUNNER_TEMP/plan.md" > /dev/null
           rc=$?
           set -e
