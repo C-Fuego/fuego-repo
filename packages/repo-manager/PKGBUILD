@@ -39,7 +39,7 @@ Open the fuego-repo TUI from a lightweight sparse checkout.
 
   init DIR       Clone a blobless sparse maintenance checkout.
   update         Fast-forward an existing checkout.
-  --repo DIR     Use this checkout instead of auto-detecting one.
+  --repo DIR     Required checkout path; no implicit current-directory discovery.
   --remote URL   Repository URL used by init (default: C-Fuego/fuego-repo).
   --branch NAME  Branch used by init (default: main).
   --no-push      Start the TUI with automatic pushing disabled.
@@ -51,17 +51,24 @@ remote="$default_remote"
 branch='main'
 no_push=0
 
-find_repo() {
-  local candidate="${REPO_MANAGER_REPO:-$PWD}"
-  while [[ "$candidate" != / ]]; do
-    if git -C "$candidate" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
-       [[ -f "$candidate/manage.sh" && -d "$candidate/packages" ]]; then
-      repo_root="$(cd -- "$candidate" && pwd -P)"
-      return 0
-    fi
-    candidate="$(dirname -- "$candidate")"
-  done
-  return 1
+require_repo() {
+  [[ -n "$explicit_repo" ]] || {
+    printf '%s\n' '必须显式指定仓库位置：repo-manager --repo /path/to/fuego-repo' >&2
+    printf '%s\n' '首次创建轻量维护副本：repo-manager init /path/to/fuego-repo-maint' >&2
+    exit 2
+  }
+  repo_root="$(cd -- "$explicit_repo" 2>/dev/null && pwd -P)" || {
+    printf '仓库目录不存在：%s\n' "$explicit_repo" >&2
+    exit 1
+  }
+  git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    printf '不是 Git 工作树：%s\n' "$repo_root" >&2
+    exit 1
+  }
+  [[ -f "$repo_root/manage.sh" && -d "$repo_root/packages" ]] || {
+    printf '不是 fuego-repo 维护副本（缺少 manage.sh 或 packages/）：%s\n' "$repo_root" >&2
+    exit 1
+  }
 }
 
 init_repo() {
@@ -118,14 +125,7 @@ while (($#)); do
   esac
 done
 
-if [[ -n "$explicit_repo" ]]; then
-  repo_root="$(cd -- "$explicit_repo" 2>/dev/null && pwd -P)" || {
-    printf '仓库目录不存在：%s\n' "$explicit_repo" >&2; exit 1;
-  }
-elif ! find_repo; then
-  printf '未找到维护入口。先运行：repo-manager init ~/Projects/fuego-repo-maint\n' >&2
-  exit 1
-fi
+require_repo
 
 [[ -x "$repo_root/manage.sh" ]] || chmod +x "$repo_root/manage.sh"
 if [[ "${update_requested:-0}" == 1 ]]; then

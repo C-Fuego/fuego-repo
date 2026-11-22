@@ -1,5 +1,7 @@
 # Package manager CLI reference
 
+For an installed `repo-manager` entry point, always pass `--repo PATH`; it never discovers or binds to the current directory automatically. Create a lightweight checkout first with `repo-manager init PATH`, then launch it explicitly with `repo-manager --repo PATH`.
+
 The non-interactive package commands are implemented by `scripts/bot/manage.py` and dispatched directly by `manage.sh`; they do not require fzf or a Git worktree. Import operations only create `packages/<pkgbase>/`: they do not pull, stage, commit, or push. Existing package directories are never overwritten.
 
 Run `./manage.sh add --help`, `./manage.sh packages --help`, and the subcommand `--help` for generated argparse help.
