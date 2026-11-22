@@ -322,7 +322,11 @@ printf 'Verifying published packages over the public URL\n'
 for file in "${payload[@]}"; do
     name="$(basename "$file")"
     expect_sha="$(sha256sum "$file" | awk '{print $1}')"
-    url="${server_url}/${prefix}/${name}"
+    # R2_PUBLIC_URL already points at the package directory (it is the exact
+    # value written into the .conf as Server), so the prefix must not be
+    # appended again -- doing so produced .../x86_64-v3/x86_64-v3/<pkg> and a
+    # 403 that looked like a corrupt edge but was just a wrong URL.
+    url="${server_url}/${name}"
     got_sha=""
     for attempt in 1 2 3; do
         if curl -fsS -o "${verify_dir}/${name}" "$url"; then
