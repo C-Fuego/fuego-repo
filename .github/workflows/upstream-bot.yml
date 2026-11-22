@@ -131,20 +131,23 @@ jobs:
             # lease as "branch must not exist" and rejects the update of an
             # open PR's branch as stale info.
             git push --force origin "$branch"
-            # Idempotent: open the PR only when one is not already open for it.
-            if [[ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[0].number')" ]]; then
-              gh pr create \
-                --head "$branch" \
-                --base main \
-                --title "chore(${pkg}): update to upstream ${new_version:0:12}" \
-                --body "Automated by scripts/hub/update.py from packages/${pkg}/update.toml.
+            title="chore(${pkg}): update to upstream ${new_version:0:12}"
+            body="Automated by scripts/hub/update.py from packages/${pkg}/update.toml.
 
           Upstream: $new_version
 
-          Review the PKGBUILD diff (pkgver commitment / pinned commit / pkgrel bump) before merging." \
+          Review the PKGBUILD diff (pkgver commitment / pinned commit / pkgrel bump) before merging."
+            # Idempotent: one PR per package. A later run moves the branch to a
+            # newer upstream revision, so the title and body of an already open
+            # PR are refreshed too -- otherwise they keep naming the old one.
+            existing="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')"
+            if [[ -z "$existing" ]]; then
+              gh pr create --head "$branch" --base main \
+                --title "$title" --body "$body" \
                 --assignee "${{ github.repository_owner }}"
             else
-              echo "PR already open for ${branch}; branch updated."
+              gh pr edit "$existing" --title "$title" --body "$body"
+              echo "PR #${existing} already open for ${branch}; branch and description updated."
             fi
             git checkout main
           done
