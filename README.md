@@ -359,6 +359,8 @@ Actions **Variables**：
 - `R2_BUCKET`：桶名，与 pacman 仓库名相同：`fuego-repo`。
 - `R2_PUBLIC_URL`：客户端使用的地址，`https://ignacio.dpdns.org/x86_64-v3`
   （必须是 https，末尾不带斜杠）。
+- `CF_ZONE_ID`：Cloudflare 的 Zone ID（控制台进入该域名的 Overview 页，右侧
+  栏可复制）。和下面那个 token 一起配，用于发布后清缓存。
 
 Actions **Secrets**：
 
@@ -367,6 +369,19 @@ Actions **Secrets**：
   与 Secret，权限只需 Object Read & Write，范围限定到该桶。
 - `REPOSITORY_PRIVATE_KEY`：ASCII armored GPG 私钥。
 - `REPOSITORY_KEY_PASSPHRASE`：私钥密码；无密码时留空。
+- `CF_API_TOKEN`：Cloudflare API token，权限只需 `Zone` → `Cache Purge` →
+  `Purge`，范围限定到该 zone。
+
+`CF_ZONE_ID` 和 `CF_API_TOKEN` 要么都配、要么都不配：只配一个会被
+`publish-r2.sh` 当成配置错误直接退出（exit 2）。两个都配时，脚本在每次上传
+之后、公网回读校验之前清掉已发布包的缓存，校验因此验证的是客户端真正拿到的
+字节。
+
+清缓存这一步不是可选优化。包名一旦发布就是不可变的，重新构建同名包只会覆盖
+对象，边缘节点照样吐旧字节：`quirc` 就撞过这个，数据库和 `.sig` 记录的是
+76531 字节的新包，裸 URL 却返回缓存里 76530 字节的旧包，客户端一律报签名无效
+（加任意 query 参数就正常，说明对象本身没问题，是边缘缓存卡住了）。发布脚本
+现在还会拒绝用不同内容覆盖同名对象，两者合起来才不会再有"发上去了但没人能装"。
 
 R2 侧另需把自定义域 `ignacio.dpdns.org` 指向该桶（R2 控制台 → 桶 →
 Settings → Custom Domains）。接上之前若该主机名已有 A/AAAA 记录，会与

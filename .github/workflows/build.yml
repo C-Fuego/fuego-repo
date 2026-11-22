@@ -1031,6 +1031,13 @@ jobs:
           # is written into the .conf by publish-r2.sh, so it must be exported
           # here too -- the script refuses to publish without it (exit 2).
           R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
+          # Publishing under a name that the edge already cached cannot be seen
+          # by clients until the cache entry is dropped, so the publish purges
+          # the URLs it just wrote. Both must be present or neither: a zone
+          # without a token (or the reverse) is a configuration mistake, and
+          # publish-r2.sh exits 2 on it.
+          CF_ZONE_ID: ${{ vars.CF_ZONE_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           REPOSITORY_DIR: published/x86_64
         run: |
           set -Eeuo pipefail

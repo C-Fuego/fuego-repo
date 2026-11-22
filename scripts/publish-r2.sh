@@ -59,12 +59,30 @@ if (( ${#missing[@]} > 0 )); then
     exit 2
 fi
 
+# A purge zone without a token (or the reverse) is a configuration mistake, and
+# finding out after every object has been uploaded leaves a published run that
+# nobody can see: the bytes are in the bucket but the edge still serves the old
+# ones. Refuse before the first upload instead.
+if [[ -n "${CF_ZONE_ID:-}" && -z "${CF_API_TOKEN:-}" ]] \
+    || [[ -z "${CF_ZONE_ID:-}" && -n "${CF_API_TOKEN:-}" ]]; then
+    printf '::error::CF_ZONE_ID and CF_API_TOKEN must be set together, or not at all.\n' >&2
+    printf 'Set both to purge the cache after publishing, or neither to publish without purging.\n' >&2
+    exit 2
+fi
+
 readonly repository_dir="${REPOSITORY_DIR}"
 readonly repository_name="${REPOSITORY_NAME}"
 readonly bucket="${R2_BUCKET}"
 readonly endpoint="${R2_ENDPOINT%/}"
 readonly prefix="${R2_PREFIX:-x86_64-v3}"
 readonly server_url="${R2_PUBLIC_URL%/}"
+
+# Cloudflare keeps its own copy of every object it has fetched. Optional purge
+# credentials: without them the script still publishes, but a re-upload can be
+# masked by an edge that fetched the object earlier.
+readonly cdn_zone_id="${CF_ZONE_ID:-}"
+readonly cdn_api_token="${CF_API_TOKEN:-}"
+readonly cdn_api="${CF_API_URL:-https://api.cloudflare.com/client/v4}"
 
 # A package filename never changes, so a long cache is right in principle. But
 # Cloudflare has served a corrupted 6226-byte copy of a 6235-byte package from
@@ -337,6 +355,74 @@ fi
 # stored object -- failing the publish for that would break every run from a
 # CI IP. Only a successful read whose hash disagrees is evidence of a corrupt
 # copy, and that fails the publish.
+# A package name is immutable, so nothing in the upload path can tell a CDN
+# edge that the body behind it changed. Cloudflare cached quirc while packages
+# were uploaded `immutable` and kept serving that 76530-byte body for a year
+# after the 76531-byte rebuild replaced the object -- the database and the .sig
+# described the new bytes, every client failed the signature check, and only a
+# cache-busting query string revealed that the stored object was correct all
+# along. Purging between the upload and the verification makes the verification
+# mean what it claims: the bytes a client receives, read fresh from R2.
+#
+# Every published package is purged, not only the ones this run uploaded: a
+# run that follows a failed purge then repairs it, and an unchanged package
+# costs one URL rather than a stale year. The API accepts 30 URLs per call.
+if [[ -n "$cdn_zone_id" || -n "$cdn_api_token" ]]; then
+    printf 'Purging the CDN cache for the published packages\n'
+    purge_urls=()
+    for file in "${payload[@]}"; do
+        name="$(basename "$file")"
+        purge_urls+=("${server_url}/${name}")
+        if [[ -f "${file}.sig" ]]; then
+            purge_urls+=("${server_url}/${name}.sig")
+        fi
+    done
+    purge_cdn_batch() {
+        local request response attempt
+        request="$(python3 -c 'import json,sys; print(json.dumps({"files": sys.argv[1:]}))' "$@")"
+        for attempt in 1 2 3; do
+            response="$(curl -sS --max-time 30 -X POST \
+                "${cdn_api}/zones/${cdn_zone_id}/purge_cache" \
+                -H "Authorization: Bearer ${cdn_api_token}" \
+                -H 'Content-Type: application/json' \
+                --data "$request" 2>/dev/null || true)"
+            if python3 -c '
+import json, sys
+try:
+    data = json.loads(sys.argv[1])
+except ValueError:
+    sys.exit(1)
+sys.exit(0 if data.get("success") else 1)
+' "$response" 2>/dev/null; then
+                return 0
+            fi
+            if (( attempt < 3 )); then
+                sleep 5
+            fi
+        done
+        printf 'Could not purge %d URL(s) from the CDN cache.\n' "$#" >&2
+        printf 'Clients may keep receiving the previous bytes until the edge expires them.\n' >&2
+        printf 'Purge them by hand (Caching -> Purge Cache -> single URL):\n' >&2
+        printf '  %s\n' "$@" >&2
+        return 1
+    }
+    if (( ${#purge_urls[@]} > 0 )); then
+        purge_batch=()
+        for url in "${purge_urls[@]}"; do
+            purge_batch+=("$url")
+            if (( ${#purge_batch[@]} >= 30 )); then
+                purge_cdn_batch "${purge_batch[@]}" || exit 1
+                purge_batch=()
+            fi
+        done
+        if (( ${#purge_batch[@]} > 0 )); then
+            purge_cdn_batch "${purge_batch[@]}" || exit 1
+        fi
+        printf 'Purged %d URL(s) for %d package(s).\n' \
+            "${#purge_urls[@]}" "${#payload[@]}"
+    fi
+fi
+
 printf 'Verifying published packages over the public URL\n'
 unverified=0
 for file in "${payload[@]}"; do

@@ -232,6 +232,13 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           # publish-r2.sh writes this into the .conf and exits 2 without it.
           R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
+          # Publishing under a name that the edge already cached cannot be seen
+          # by clients until the cache entry is dropped, so the publish purges
+          # the URLs it just wrote. Both must be present or neither: a zone
+          # without a token (or the reverse) is a configuration mistake, and
+          # publish-r2.sh exits 2 on it.
+          CF_ZONE_ID: ${{ vars.CF_ZONE_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           REPOSITORY_DIR: published/x86_64
         run: |
           set -Eeuo pipefail
