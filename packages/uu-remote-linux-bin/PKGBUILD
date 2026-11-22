@@ -64,9 +64,12 @@ package() {
   install -Dm644 libuu-wayland.so "${pkgdir}/usr/lib/uu-remote-linux/libuu-wayland.so"
   install -Dm644 libuu-portal.so "${pkgdir}/usr/lib/uu-remote-linux/libuu-portal.so"
 
-  install -Dm644 contrib/desktop/uu-remote-linux.desktop "${pkgdir}/usr/share/applications/uu-remote-linux.desktop"
-  install -Dm644 contrib/desktop/uu-remote-linux-viewer.desktop "${pkgdir}/usr/share/applications/uu-remote-linux-viewer.desktop"
-  install -Dm644 contrib/desktop/uu-remote-linux.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/uu-remote-linux.svg"
+  # emoeem overlay: support the new upstream desktop asset directory
+  local _desktop_dir=packaging/common/desktop
+  [[ -d "${_desktop_dir}" ]] || _desktop_dir=contrib/desktop
+  install -Dm644 "${_desktop_dir}"/uu-remote-linux.desktop "${pkgdir}/usr/share/applications/uu-remote-linux.desktop"
+  install -Dm644 "${_desktop_dir}"/uu-remote-linux-viewer.desktop "${pkgdir}/usr/share/applications/uu-remote-linux-viewer.desktop"
+  install -Dm644 "${_desktop_dir}"/uu-remote-linux.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/uu-remote-linux.svg"
 
   # The unit name must stay uuremote-native.service: uuremote-server show and
   # the desktop entry manage exactly this unit.
