@@ -125,7 +125,12 @@ jobs:
           PY
           )"
             git commit -m "chore(${pkg}): track upstream ${new_version:0:12}"
-            git push --force-with-lease origin "$branch"
+            # The bot owns chore/upstream/* and rebuilds each branch from main
+            # every run. --force-with-lease cannot work here: a fresh checkout
+            # holds no remote-tracking ref for the branch, so git treats the
+            # lease as "branch must not exist" and rejects the update of an
+            # open PR's branch as stale info.
+            git push --force origin "$branch"
             # Idempotent: open the PR only when one is not already open for it.
             if [[ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[0].number')" ]]; then
               gh pr create \
