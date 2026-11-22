@@ -50,7 +50,7 @@ REPOSITORY_SERVER="file:///tmp/emoeem-test/x86_64" \
 grep -Fxq '[emoeem]' "$temp/repository/emoeem.conf"
 grep -Fxq 'SigLevel = Never' "$temp/repository/emoeem.conf"
 ( cd "$temp/repository" && sha256sum --check SHA256SUMS )
-"$root/scripts/verify-repository.sh" "$temp/repository"
+REPOSITORY_NAME="emoeem" "$root/scripts/verify-repository.sh" "$temp/repository"
 bsdtar -tf "$temp/repository/emoeem.db" | grep -Fq 'epoch-demo-1:2.0/desc'
 
 bsdtar -xOf "$temp/repository/emoeem.db" 'epoch-demo-1:2.0/desc' |
@@ -70,7 +70,7 @@ grep -Fv -e "${missing_asset}" \
     > "$temp/repository-missing-asset/SHA256SUMS.new"
 mv "$temp/repository-missing-asset/SHA256SUMS.new" \
     "$temp/repository-missing-asset/SHA256SUMS"
-if verify_log="$(bash "$root/scripts/verify-repository.sh" "$temp/repository-missing-asset" 2>&1)"; then
+if verify_log="$(REPOSITORY_NAME="emoeem" bash "$root/scripts/verify-repository.sh" "$temp/repository-missing-asset" 2>&1)"; then
     echo 'verify-repository.sh passed despite a missing package asset' >&2
     exit 1
 fi

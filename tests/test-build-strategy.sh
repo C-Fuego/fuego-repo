@@ -6,7 +6,7 @@
 #   2. fail-safe 判据的唯一方向：只有**明确声明**的 binary-repack/data 才
 #      defer 给上游；缺失或非法一律按可本地重建处理——三个消费点（依赖版本
 #      漂移、SONAME 检测、dispatch）对「策略不明」不允许各自假设；
-#   3. 真实树：packages/ 下 15 个包全部声明了合法策略，且 binary-repack/data
+#   3. 真实树：packages/ 下 17 个包全部声明了合法策略，且 binary-repack/data
 #      的成员与可本地重建集合互斥（dispatch 端 IGNORE 的对象清单）。
 set -Eeuo pipefail
 
@@ -68,19 +68,20 @@ for pkg_dir in "$root"/packages/*/; do
     declared=$((declared + 1))
 done
 shopt -u nullglob
-(( declared == 15 )) || fail "expected 15 packages with a strategy, found $declared"
-echo "ok: $declared/15 packages declare a legal strategy"
+(( declared == 17 )) || fail "expected 17 packages with a strategy, found $declared"
+echo "ok: $declared/17 packages declare a legal strategy"
 
 printf '%s\n' '4: repack/data members match the audit classification'
-expected_repack='dsh-desktop-linux filee-bin trae-cn-appimage vapoursynth-plugin-mlrt-ncnn-runtime'
-expected_data='dracpanel sing-box-rule-sets'
+expected_repack='dsh-desktop-linux fuego-repo-keyring'
+expected_data=''
 actual="$(for pkg_dir in "$root"/packages/*/; do
     value="$(build_strategy_of "$pkg_dir")" || continue
     if build_strategy_defers_to_upstream "$value"; then
         basename "$pkg_dir"
     fi
 done | sort | paste -sd' ' -)"
-[[ "$actual" == "$(printf '%s\n%s' "$expected_data" "$expected_repack" | tr ' ' '\n' | sort | paste -sd' ' -)" ]] ||
+expected="$(for e in $expected_repack $expected_data; do printf '%s\n' "$e"; done | sort | paste -sd' ' -)"
+[[ "$actual" == "$expected" ]] ||
     fail "repack/data set drifted from the audit: $actual"
 echo 'ok: repack/data membership matches reports/pkgbuild-optimization/package-strategy-audit.md'
 

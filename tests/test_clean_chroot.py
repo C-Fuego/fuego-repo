@@ -73,8 +73,8 @@ class CleanChrootTests(unittest.TestCase):
     def test_upgrade_path_uses_old_repo_and_new_artifact_in_staging(self):
         script = (ROOT / 'scripts/test-upgrade-path.sh').read_text()
         self.assertIn("previous repository package set", script)
-        self.assertIn('emoeem-staging', script)
+        self.assertIn('fuego-repo-staging', script)
         self.assertIn('pacman -Syu --noconfirm --ask=4 "$package_name"', script)
-        self.assertIn('sing-box-ebpf', script)
+        self.assertIn('linuxqq-wayland-fix-git|folia', script)
 
 if __name__ == '__main__': unittest.main()

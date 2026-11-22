@@ -63,14 +63,14 @@ check() {
 }
 
 section 'Syntax'
-for file in manage.sh client/*.sh scripts/*.sh scripts/lib/*.sh tests/*.sh; do
+for file in manage.sh scripts/*.sh scripts/lib/*.sh tests/*.sh; do
     [[ -f "$file" ]] || continue
     check "bash -n $file" bash -n "$file"
 done
 
 section 'Lint'
 if command -v shellcheck >/dev/null 2>&1; then
-    check 'shellcheck' shellcheck --severity=warning manage.sh client/*.sh scripts/*.sh scripts/lib/*.sh tests/*.sh
+    check 'shellcheck' shellcheck --severity=warning manage.sh scripts/*.sh scripts/lib/*.sh tests/*.sh
 else
     skipped=$(( skipped + 1 ))
     printf 'SKIP  shellcheck (not installed)\n'

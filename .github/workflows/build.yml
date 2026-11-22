@@ -323,7 +323,7 @@ jobs:
           # Only package files seed the local repository; the database would be
           # rebuilt by create-repository.sh from scratch.
           find localrepo/x86_64 -maxdepth 1 -type f ! -name '*.pkg.tar.zst' -delete
-          ls localrepo/x86_64 | head -5
+          find localrepo/x86_64 -maxdepth 1 -type f -printf '%f\n' | head -5
 
       - name: Build in reusable CachyOS builder
         shell: bash
@@ -771,7 +771,9 @@ jobs:
           git add packages state/repair-history.jsonl
           # Run metrics are versioned too, but only when an attempt produced one:
           # `git add` on a missing path fails the step.
-          [[ -f state/autopilot-runs.jsonl ]] && git add state/autopilot-runs.jsonl || true
+          if [[ -f state/autopilot-runs.jsonl ]]; then
+            git add state/autopilot-runs.jsonl
+          fi
           if git diff --cached --quiet; then
             echo "Repairs produced no committed change."
             exit 0
