@@ -40,10 +40,12 @@ prepare() {
   local _appimage="${srcdir}/steamcommunity302-${pkgver}.AppImage"
 
   rm -rf "${srcdir}/squashfs-root"
-  chmod 755 "${_appimage}"
+  # emoeem overlay: extract from a writable copy of the cached AppImage
+  local _extractor="${srcdir}/steamcommunity302-extract.AppImage"
+  install -m755 "${_appimage}" "${_extractor}"
   (
     cd "${srcdir}"
-    "${_appimage}" --appimage-extract
+    "${_extractor}" --appimage-extract
   )
 }
 
