@@ -9,7 +9,7 @@
 # build -- the whole point is to carry that one file and register it.
 pkgname=fuego-repo-keyring
 pkgver=20261122
-pkgrel=2
+pkgrel=3
 pkgdesc="Signing key for the fuego-repo pacman repository"
 arch=('any')
 url="https://ignacio.dpdns.org/x86_64-v3"
@@ -28,8 +28,15 @@ source=("fuego-repo-key.pub::https://ignacio.dpdns.org/x86_64-v3/fuego-repo-key.
 sha256sums=('SKIP')
 
 package() {
+  # pacman-key --populate reads <name>.gpg (a binary keyring), not the armored
+  # .asc: it does `--import $KEYRING_IMPORT_DIR/<name>.gpg` and errors with
+  # "The keyring file .../fuego-repo.gpg does not exist" otherwise. Ship the
+  # binary form under that name, and keep the armored .asc for humans/tools
+  # that expect the published file.
   install -Dm644 "$srcdir/fuego-repo-key.pub" \
     "$pkgdir/usr/share/pacman/keyrings/fuego-repo.asc"
+  gpg --dearmor < "$srcdir/fuego-repo-key.pub" \
+    > "$pkgdir/usr/share/pacman/keyrings/fuego-repo.gpg"
 
   # trusted: keys pacman may use to validate this repository's database.
   printf '%s\n' "2200497908F87275:4:" > "$pkgdir/usr/share/pacman/keyrings/fuego-repo-trusted"
