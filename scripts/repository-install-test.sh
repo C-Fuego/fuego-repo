@@ -61,7 +61,24 @@ if ! grep -qx "[$repository_name]" "$pacman_conf"; then
 fi
 
 printf 'Refreshing package databases...\n'
-pacman -Syu --noconfirm >/dev/null
+# This test must refresh repository metadata, but it must not upgrade the
+# disposable image's whole system. A full -Syu can chase package filenames that
+# rotated out of a CDN during mirror sync and hide the actual install result.
+sync_ok=0
+for attempt in 1 2 3; do
+    if pacman -Syy --noconfirm >/dev/null; then
+        sync_ok=1
+        break
+    fi
+    if (( attempt < 3 )); then
+        printf 'Package database refresh failed (attempt %d/3); retrying...\n' "$attempt" >&2
+        sleep 10
+    fi
+done
+(( sync_ok == 1 )) || {
+    printf 'Package database refresh failed after 3 attempts; external mirror may be mid-sync.\n' >&2
+    exit 1
+}
 
 mapfile -t selected_package_records < <(bash "$workspace_dir/scripts/select-incoming-packages.sh" "$incoming_dir")
 if (( ${#selected_package_records[@]} == 0 )); then
