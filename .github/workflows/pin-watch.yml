@@ -21,10 +21,8 @@ on:
         default: ""
         type: string
   schedule:
-    # Sunday 11:17 UTC = Monday 01:17 in Asia/Shanghai.  Placed off the
-    # :23/:53 two-hourly slots used by dependency-drift.yml and
-    # dsh-desktop-linux-update.yml so a long pin probe never queues behind a
-    # rebuild, and after maintenance.yml's daily sweep.
+    # Sunday 17:11 UTC = Monday 01:11 in Asia/Shanghai. Keep this off
+    # the :23 dependency-drift slot and after the daily maintenance sweep.
     - cron: "11 17 * * 0"
 
 permissions:

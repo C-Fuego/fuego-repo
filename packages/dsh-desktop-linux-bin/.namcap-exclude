@@ -1,4 +1,4 @@
-# This package repackages the prebuilt Arch package published by
+# This package repackages the prebuilt Debian package published by
 # https://github.com/ffyfox/dsh-desktop-linux/releases (Electron app plus a
 # bundled CPython/pnpm runtime under /opt). Namcap only reasons about system
 # packages, so its payload rules misfire structurally on upstream artifacts

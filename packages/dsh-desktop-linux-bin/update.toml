@@ -1,0 +1,4 @@
+track = "aur"
+url = "https://aur.archlinux.org/dsh-desktop-linux-bin.git"
+commit = "970b1d57a2ffe8425a19d2c07a2850a747cf19e5"
+strategy = "binary"

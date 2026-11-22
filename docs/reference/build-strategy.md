@@ -29,7 +29,7 @@ strategy = "binary"
 |---|---|
 | `source` | ffmpeg-full, mpeghdec, quirc, sing-box-ebpf, sing-box-panel |
 | `vcs` | linuxqq-wayland-fix-git, scx-scheds-git, svt-jpeg-xs-git, xclip-git |
-| `binary` | dsh-desktop-linux, filee-bin, trae-cn-appimage, vapoursynth-plugin-mlrt-ncnn-runtime |
+| `binary` | dsh-desktop-linux-bin, magpie-bin, steamcommunity302, uu-remote-linux-bin |
 | `data` | dracpanel, sing-box-rule-sets |
 
 `dracpanel` 归 `data` 的依据：`arch=('any')`、tarball 携带预构建 Vite dist、`package()` 只拷静态文件、`check()` 强制 dist 与源码同 commit。
@@ -56,7 +56,7 @@ strategy = "binary"
 
 ## 与 `.pkgrel-floor-skip` 的关系
 
-两个声明独立：`binary` 描述调度行为，`.pkgrel-floor-skip` 描述 pkgrel 抬档豁免。当前二者在 dsh-desktop-linux 上同时存在；`filee-bin` 等未声明 skip 的 repack 包本地 pkgrel 仍可抬档。
+`binary` 描述调度行为。`.pkgrel-floor-skip` 用于豁免 pkgrel 抬档。`dsh-desktop-linux-bin` 未声明此豁免，使用常规的 pkgrel 策略。
 
 ## 测试
 

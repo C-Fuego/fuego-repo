@@ -50,7 +50,7 @@ AUR 同步（`sync-aur-packages.sh`）是 per-package 故障隔离的：单包�
 ## 运行依赖声明
 
 - `depends` 以运行时真实需要为准；构建期头文件进 `makedepends`；可选运行时能力进 `optdepends` 并写明运行条件（如 `cuda: for NVIDIA NPP filters (...)`）。
-- **repack 包的 depends 对账**：dsh-desktop-linux 的 `build()` 把资产 `.PKGINFO` 的 depend 集合与本地 `depends=()` 双向比较，任一方向不一致即构建失败（上游 rc2 删 libxss 就是这样漂移了三个版本的）。依赖语义的变更由人改数组，更新器只 pin pkgver/sha256。
+- **预编译包的依赖**：`dsh-desktop-linux-bin` 采用 AUR 配方的 `depends` 和 `optdepends`，由常规 AUR 同步更新，并在发布前检查安装和运行时依赖。
 - 仓库内互相依赖的包（mpeghdec/quirc/svt-jpeg-xs-git → ffmpeg-full）：构建 DAG 分波次，下游 job 等待并把上游新产物 staging 进本地仓库（`wait-for-build-dependencies.sh`）。
 
 ## 仓库外触发（`.rebuild-on`）

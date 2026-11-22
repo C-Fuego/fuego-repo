@@ -106,15 +106,9 @@ soname 扫描脚本对已发布的包再做一次深度复查，发现依赖过�
 **Sync dae release** 工作流每天 `02:17 UTC` 运行 `scripts/sync-dae-release.sh`：
 比对 dae 上游的发布标记，有更新时重建 `daed-emo` 并等待这次构建结束。
 
-**Track dsh-desktop-linux releases** 工作流每两小时（`53 */2 * * *`）扫描
-[ffyfox/dsh-desktop-linux](https://github.com/ffyfox/dsh-desktop-linux) 的
-release 列表，锁定最新一个真正发布 x86_64 Arch 资产的版本（alpha 标签没有
-Arch 资产，按资产规则自动跳过）。`scripts/update-dsh-desktop-linux.py` 校验
-tag、资产状态与 GitHub 计算的 sha256 digest，有新版时同时更新 `PKGBUILD` 的
-`pkgver`/`sha256sums` 与 `.SRCINFO` 的 `pkgver`/`noextract`/`source`/`sha256sums`
-（资产名内嵌 `pkgver`，所以这五行联动）；随后同样经过 makepkg 元数据校验、
-候选构建与运行时验证才提交并 dispatch 发布。同一版本换了校验和会报错拒绝，
-绝不静默重 pin 已发布的 tag。
+DeepSeek Harness 桌面版由 **Sync AUR package sources** 跟踪
+[AUR 的 `dsh-desktop-linux-bin`](https://aur.archlinux.org/packages/dsh-desktop-linux-bin)。
+新包声明替换旧的 `dsh-desktop-linux`，pacman 完整升级时会提示迁移。
 
 **构建不沿依赖图传播**：构建计划只包含被点名的包。依赖更新后是否需要重建
 依赖者由 ABI watch 裁决——它比对已发布包的 ELF `NEEDED` 与当前库清单，只有
