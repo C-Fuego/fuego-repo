@@ -137,7 +137,6 @@ jobs:
       # 却让每天一次的 soname 复查整个 job 变红。
       # See build.yml: the owner casing is normalized where the image is
       # actually used, because Docker image references must be lowercase.
-      BUILDER_IMAGE_REPOSITORY: ${{ github.repository_owner }}/pkgbuild-builder:latest
     outputs:
       stale: ${{ steps.dispatch.outputs.stale }}
     steps:

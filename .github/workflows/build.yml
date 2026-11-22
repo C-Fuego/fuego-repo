@@ -58,10 +58,6 @@ env:
   # the bucket (one directory per architecture, which is what pacman expects).
   R2_PREFIX: x86_64-v3
   R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
-  # Docker rejects uppercase in an image reference and GitHub keeps the
-  # owner's original casing, so the image is built from a lowercased
-  # owner inside the steps that need it, never interpolated here.
-  BUILDER_IMAGE_REPOSITORY: ${{ github.repository_owner }}/pkgbuild-builder:latest
 
 jobs:
   select:
@@ -931,6 +927,7 @@ jobs:
       - name: Update repository database
         shell: bash
         env:
+          BUILDER_IMAGE: ${{ steps.builder.outputs.image }}
           REPOSITORY_KEY_PASSPHRASE: ${{ secrets.REPOSITORY_KEY_PASSPHRASE }}
         run: |
           set -Eeuo pipefail
@@ -952,6 +949,8 @@ jobs:
 
       - name: Verify repository integrity
         shell: bash
+        env:
+          BUILDER_IMAGE: ${{ steps.builder.outputs.image }}
         run: |
           set -Eeuo pipefail
           docker run --rm \
@@ -962,6 +961,8 @@ jobs:
 
       - name: Generate ABI manifest
         shell: bash
+        env:
+          BUILDER_IMAGE: ${{ steps.builder.outputs.image }}
         run: |
           set -Eeuo pipefail
           docker run --rm \
@@ -978,6 +979,7 @@ jobs:
         # packages.
         shell: bash
         env:
+          BUILDER_IMAGE: ${{ steps.builder.outputs.image }}
           INSTALL_TEST_ALL: ${{ vars.INSTALL_TEST_ALL || '0' }}
         run: |
           set -Eeuo pipefail

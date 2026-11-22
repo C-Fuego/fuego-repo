@@ -40,7 +40,6 @@ env:
   # Docker rejects uppercase in an image reference and GitHub keeps the
   # owner's original casing, so the image is built from a lowercased
   # owner inside the steps that need it, never interpolated here.
-  BUILDER_IMAGE_REPOSITORY: ${{ github.repository_owner }}/pkgbuild-builder:latest
 
 jobs:
   detect:
