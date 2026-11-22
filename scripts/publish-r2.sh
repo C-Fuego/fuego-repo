@@ -196,9 +196,22 @@ for file in "${payload[@]}"; do
             continue
         fi
         if [[ -n "$stored" && "$stored" != "None" ]]; then
-            printf 'Package content changed but the name is the same: %s\n' "$name"
-            printf '  bucket: %s\n  built:  %s\n' "$stored" "$local_sha256"
-            printf 'This means the PKGBUILD was rebuilt without a pkgrel bump.\n' >&2
+            # Overwriting an object that already exists under this exact name is
+            # worse than a wasted upload: every CDN edge keeps the body it
+            # cached, so clients download the previous bytes while the database
+            # and the .sig describe the new ones. Observed exactly that with
+            # quirc: the database recorded a 76531-byte package, the bare URL
+            # served a cached 76530-byte one, and pacman rejected the pair as a
+            # corrupted signature. A package name is immutable once published;
+            # a rebuild must carry a new name.
+            printf 'Refusing to overwrite %s with different content.\n' "$name" >&2
+            printf '  bucket: %s\n  built:  %s\n' "$stored" "$local_sha256" >&2
+            printf 'The PKGBUILD was rebuilt without a pkgrel bump. Bump pkgrel so the\n' >&2
+            printf 'package gets a new name; a CDN edge would otherwise keep serving\n' >&2
+            printf 'the previous bytes under this one and clients would see a bad\n' >&2
+            printf 'signature. (If the published bytes are already the right ones,\n' >&2
+            printf 'purge this URL at the CDN instead of republishing.)\n' >&2
+            exit 1
         fi
     fi
     pending+=("$file")
