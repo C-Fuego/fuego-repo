@@ -1,7 +1,7 @@
 # Maintainer: C-Fuego
 pkgname=ziglet
 pkgver=1.0.0
-pkgrel=1
+pkgrel=2
 pkgdesc="FIGlet-compatible text renderer with TOIlet filters and exports"
 arch=('x86_64')
 options=('!debug' '!strip')
@@ -9,7 +9,7 @@ url="https://github.com/C-Fuego/Rezig"
 license=('MIT')
 depends=('zlib')
 makedepends=('zig')
-_commit=HEAD
+_commit=54f24d2a35434b4e77e4b6bcef97378e4c4d9d24
 source=("$pkgname::git+https://github.com/C-Fuego/Rezig#commit=$_commit")
 sha256sums=('SKIP')
 
