@@ -6,7 +6,7 @@
 #   2. fail-safe 判据的唯一方向：只有**明确声明**的 binary-repack/data 才
 #      defer 给上游；缺失或非法一律按可本地重建处理——三个消费点（依赖版本
 #      漂移、SONAME 检测、dispatch）对「策略不明」不允许各自假设；
-#   3. 真实树：packages/ 下 21 个包全部声明了合法策略，且 binary-repack/data
+#   3. 真实树：packages/ 下 24 个包全部声明了合法策略，且 binary-repack/data
 #      的成员与可本地重建集合互斥（dispatch 端 IGNORE 的对象清单）。
 set -Eeuo pipefail
 
@@ -68,11 +68,11 @@ for pkg_dir in "$root"/packages/*/; do
     declared=$((declared + 1))
 done
 shopt -u nullglob
-(( declared == 21 )) || fail "expected 21 packages with a strategy, found $declared"
-echo "ok: $declared/21 packages declare a legal strategy"
+(( declared == 24 )) || fail "expected 24 packages with a strategy, found $declared"
+echo "ok: $declared/24 packages declare a legal strategy"
 
 printf '%s\n' '4: repack/data members match the audit classification'
-expected_repack='dsh-desktop-linux fuego-repo-keyring magpie-bin'
+expected_repack='dsh-desktop-linux fuego-repo-keyring magpie-bin steamcommunity302 uu-remote-linux-bin'
 expected_data='ttf-jetbrains-maple-mono-xx-xx-xx'
 actual="$(for pkg_dir in "$root"/packages/*/; do
     value="$(build_strategy_of "$pkg_dir")" || continue

@@ -3,7 +3,7 @@
 这个项目把 `packages/*/PKGBUILD` 自动构建成 Arch Linux `x86_64`
 软件包，并在私有 `repo` 分支维护标准 pacman 仓库数据库。
 
-当前维护 21 个 package base。
+当前维护 24 个 package base。
 
 ## Features
 
@@ -51,6 +51,9 @@
 | `luciole-git` | `x86_64` | 原生 Wayland 文件管理器，支持快速预览、标签页、分屏和 Miller 列（VCS 包，版本由 `pkgver()` 计算） |
 | `ttf-jetbrains-maple-mono-xx-xx-xx` | `any` | JetBrains Maple Mono 字体：JetBrains Mono 与 Maple Mono 的融合；直接重新打包上游发布的字体包 |
 | `flyline` | `x86_64` | Bash 插件，用现代的行编辑取代 readline |
+| `steamcommunity302` | `x86_64` | Steam 社区等站点的反向代理工具，包含图形界面和命令行工具 |
+| `fcitx5-wetypex` | `x86_64` | 微信输入法的 Fcitx5 兼容层 |
+| `uu-remote-linux-bin` | `x86_64` | 非官方 UU 远程 Linux 被控端与控制端，重打包上游预编译产物 |
 
 版本以各目录中的 `PKGBUILD` 和 `.SRCINFO` 为准。
 
