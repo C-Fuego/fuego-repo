@@ -178,7 +178,7 @@ jobs:
             --volume "$GITHUB_WORKSPACE/repository-key.asc:/run/secrets/repository-key.asc:ro" \
             --volume "$GITHUB_WORKSPACE/repository-passphrase:/run/secrets/repository-passphrase:ro" \
             --env "REPOSITORY_NAME=${REPOSITORY_NAME}" \
-            --env "REPOSITORY_SERVER=${R2_PUBLIC_URL:-https://example.invalid/configure-R2_PUBLIC_URL}/${R2_PREFIX}" \
+            --env "REPOSITORY_SERVER=${R2_PUBLIC_URL:?R2_PUBLIC_URL is required}" \
             --env "REPOSITORY_KEY_PASSPHRASE_FILE=/run/secrets/repository-passphrase" \
             "$builder_image" \
             bash /workspace/scripts/create-repository.sh
