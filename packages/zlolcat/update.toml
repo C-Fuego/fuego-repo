@@ -1,3 +1,6 @@
-track = "git-commit"
+# Rezig tags mark a release of the whole repository, so pkgver stays this
+# package's own version; the tag only decides which commit gets built.
+track = "git-tag-pin"
 git = "https://github.com/C-Fuego/Rezig"
+tag_pattern = '^v\d+\.\d+\.\d+$'
 on_update = "pull-request"

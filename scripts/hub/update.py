@@ -3,7 +3,7 @@
 
 A package opts in by carrying a `packages/<name>/update.toml`:
 
-    track = "git-tag"          # git-tag | git-commit | git-vcs
+    track = "git-tag"          # git-tag | git-tag-pin | git-commit | git-vcs
     git   = "https://github.com/user/repo"
     tag_pattern = "^v(\\d+\\.\\d+\\.\\d+)$"   # git-tag only
     on_update = "pull-request"               # pull-request | issue | none
@@ -11,6 +11,11 @@ A package opts in by carrying a `packages/<name>/update.toml`:
 What each track does when its upstream moves:
 
   git-tag     a new tag matching tag_pattern exists  -> pkgver=<tag>, pkgrel=1
+  git-tag-pin the newest tag's commit differs from _commit
+                                                     -> _commit=<sha of tag>, pkgrel+1
+              (the tag marks a release of the whole upstream repository, not
+              this package, so pkgver is left alone -- use it when several
+              packages share one repository and carry their own versions)
   git-commit  upstream HEAD differs from _commit      -> _commit=<sha>, pkgrel+1
   git-vcs     upstream HEAD differs from the built rev -> pkgrel+1 (pkgver() re-derives)
 
@@ -46,7 +51,7 @@ from hub import declaration as decl  # noqa: E402
 from hub import pins  # noqa: E402
 
 UPDATE_FILENAME = "update.toml"
-TRACKS = ("git-tag", "git-commit", "git-vcs")
+TRACKS = ("git-tag", "git-tag-pin", "git-commit", "git-vcs")
 ON_UPDATE = ("pull-request", "issue", "none")
 
 #: Exit code meaning "there is at least one update to carry".
@@ -73,6 +78,8 @@ class Plan:
     old: str = ""
     new: str = ""
     detail: str = ""
+    #: Human label for the new revision (a tag name); falls back to the hash.
+    ref: str = ""
     error: str = ""
     edits: list[tuple[str, str]] = field(default_factory=list)  # (field, new-value)
     directory: Path = field(default_factory=lambda: ROOT)
@@ -180,6 +187,28 @@ def git_remote_tags(url: str, timeout: int = 60) -> list[str] | None:
     return tags
 
 
+def git_remote_tag_commit(url: str, tag: str, timeout: int = 60) -> str | None:
+    """The commit a tag points at, peeled through an annotated tag object."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", url, f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}"],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    direct = peeled = None
+    for line in result.stdout.splitlines():
+        sha, _, ref = line.partition("\t")
+        if ref.strip() == f"refs/tags/{tag}^{{}}":
+            peeled = sha
+        elif ref.strip() == f"refs/tags/{tag}":
+            direct = sha
+    # An annotated tag lists the tag object first and its commit under ^{}.
+    return peeled or direct
+
+
 def _pkgrel_next(rel: str) -> str | None:
     """Same arithmetic as scripts/lib/pkgrel-policy.sh pkgrel_policy_next."""
     if re.fullmatch(r"[0-9]+", rel):
@@ -209,6 +238,27 @@ def plan_package(spec: UpdateSpec) -> Plan:
                         detail="already at the newest tag")
         return Plan(spec.package, spec.track, True, old=current, new=new_pkgver,
                     edits=[("pkgver", new_pkgver), ("pkgrel", "1")], directory=directory)
+
+    if spec.track == "git-tag-pin":
+        tags = git_remote_tags(spec.git)
+        if tags is None:
+            return Plan(spec.package, spec.track, False, error="upstream tags could not be read")
+        tag = _select_tag(tags, spec.tag_pattern)
+        if tag is None:
+            return Plan(spec.package, spec.track, False, detail="no tag matches the pattern")
+        sha = git_remote_tag_commit(spec.git, tag)
+        if sha is None:
+            return Plan(spec.package, spec.track, False, error=f"commit of tag {tag} could not be read")
+        current = decl.read_pkgbuild_variable(directory, "_commit") or "HEAD"
+        if current == sha:
+            return Plan(spec.package, spec.track, False, old=current, new=sha, ref=tag,
+                        detail=f"pinned to {tag}")
+        rel = decl.pkgrel_from_pkgbuild(directory / "PKGBUILD") or "1"
+        next_rel = _pkgrel_next(rel)
+        if next_rel is None:
+            return Plan(spec.package, spec.track, False, error=f"unsupported pkgrel {rel!r}")
+        return Plan(spec.package, spec.track, True, old=current, new=sha, ref=tag,
+                    edits=[("_commit", sha), ("pkgrel", next_rel)], directory=directory)
 
     if spec.track == "git-commit":
         upstream = pins.git_remote_head(spec.git)
@@ -260,7 +310,8 @@ def render_plan(plans: list[Plan], errors: list[str]) -> str:
         lines.append("| package | track | current | new |")
         lines.append("| --- | --- | --- | --- |")
         for plan in updates:
-            lines.append(f"| {plan.package} | {plan.track} | `{plan.old}` | `{plan.new}` |")
+            shown = f"{plan.ref} (`{plan.new[:12]}`)" if plan.ref else f"`{plan.new}`"
+            lines.append(f"| {plan.package} | {plan.track} | `{plan.old}` | {shown} |")
         lines.append("")
     if failed:
         lines.append(f"## {len(failed)} probe failure(s)")

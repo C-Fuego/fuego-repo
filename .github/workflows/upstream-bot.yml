@@ -116,22 +116,23 @@ jobs:
               continue
             fi
             git add "packages/${pkg}/PKGBUILD" "packages/${pkg}/.SRCINFO"
+            # A tag name reads better than a hash in the commit and PR title.
             new_version="$(python3 - "$RUNNER_TEMP/plan.json" "$pkg" <<'PY'
           import json, sys
           data = json.load(open(sys.argv[1]))
           for plan in data['plans']:
               if plan['package'] == sys.argv[2]:
-                  print(plan['new'])
+                  print(plan.get('ref') or plan['new'][:12])
           PY
           )"
-            git commit -m "chore(${pkg}): track upstream ${new_version:0:12}"
+            git commit -m "chore(${pkg}): track upstream ${new_version}"
             # The bot owns chore/upstream/* and rebuilds each branch from main
             # every run. --force-with-lease cannot work here: a fresh checkout
             # holds no remote-tracking ref for the branch, so git treats the
             # lease as "branch must not exist" and rejects the update of an
             # open PR's branch as stale info.
             git push --force origin "$branch"
-            title="chore(${pkg}): update to upstream ${new_version:0:12}"
+            title="chore(${pkg}): update to upstream ${new_version}"
             body="Automated by scripts/hub/update.py from packages/${pkg}/update.toml.
 
           Upstream: $new_version

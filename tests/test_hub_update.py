@@ -103,6 +103,73 @@ class PlanApplyTests(unittest.TestCase):
         self.assertIsNone(_MODULE._pkgrel_next("1a"))
 
 
+class TagPinTests(unittest.TestCase):
+    """git-tag-pin against a real repository, not a mock of ls-remote."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.upstream = self.tmp / "upstream"
+        self.upstream.mkdir()
+        self._git("init", "-q", "-b", "main")
+        self._git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                  "--allow-empty", "-m", "one")
+        self.first = self._git("rev-parse", "HEAD")
+        self._git("-c", "user.name=t", "-c", "user.email=t@t", "tag", "-a", "v0.1.0", "-m", "x")
+        self._git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                  "--allow-empty", "-m", "two")
+        self.second = self._git("rev-parse", "HEAD")
+        self._git("-c", "user.name=t", "-c", "user.email=t@t", "tag", "-a", "v0.2.0", "-m", "y")
+        self._git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                  "--allow-empty", "-m", "three, after the newest tag")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _git(self, *args: str) -> str:
+        return subprocess.run(["git", *args], cwd=self.upstream, check=True,
+                              capture_output=True, text=True).stdout.strip()
+
+    def _package(self, commit: str) -> Path:
+        d = self.tmp / "packages" / "demo"
+        d.mkdir(parents=True)
+        (d / "PKGBUILD").write_text(
+            f"pkgname=demo\npkgver=0.3.0\npkgrel=4\n_commit={commit}\n", encoding="utf-8")
+        return d
+
+    def _spec(self, directory: Path):
+        return _MODULE.UpdateSpec(
+            package="demo", directory=directory, track="git-tag-pin",
+            git=str(self.upstream), tag_pattern=r"^v\d+\.\d+\.\d+$")
+
+    def test_annotated_tag_resolves_to_its_commit_not_the_tag_object(self):
+        sha = _MODULE.git_remote_tag_commit(str(self.upstream), "v0.2.0")
+        self.assertEqual(self.second, sha)
+
+    def test_pins_newest_tag_not_head_and_leaves_pkgver_alone(self):
+        plan = _MODULE.plan_package(self._spec(self._package("HEAD")))
+        self.assertTrue(plan.available)
+        self.assertEqual("v0.2.0", plan.ref)
+        self.assertEqual([("_commit", self.second), ("pkgrel", "5")], plan.edits)
+        self.assertNotIn("pkgver", [name for name, _ in plan.edits])
+
+    def test_already_pinned_to_the_newest_tag_is_current(self):
+        plan = _MODULE.plan_package(self._spec(self._package(self.second)))
+        self.assertFalse(plan.available)
+        self.assertEqual("", plan.error)
+
+    def test_commits_after_the_newest_tag_are_not_an_update(self):
+        # HEAD moved on, but only a new tag counts for this track.
+        plan = _MODULE.plan_package(self._spec(self._package(self.second)))
+        self.assertFalse(plan.available)
+
+    def test_no_matching_tag_is_reported_not_treated_as_current(self):
+        spec = self._spec(self._package("HEAD"))
+        spec = _MODULE.UpdateSpec(**{**spec.__dict__, "tag_pattern": r"^release-"})
+        plan = _MODULE.plan_package(spec)
+        self.assertFalse(plan.available)
+        self.assertIn("no tag matches", plan.detail)
+
+
 _SRCINFO = (
     "pkgbase = zbonsai\n"
     "\tpkgdesc = demo\n"
