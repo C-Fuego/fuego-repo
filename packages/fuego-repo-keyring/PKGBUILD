@@ -9,7 +9,7 @@
 # build -- the whole point is to carry that one file and register it.
 pkgname=fuego-repo-keyring
 pkgver=20261122
-pkgrel=1
+pkgrel=2
 pkgdesc="Signing key for the fuego-repo pacman repository"
 arch=('any')
 url="https://ignacio.dpdns.org/x86_64-v3"

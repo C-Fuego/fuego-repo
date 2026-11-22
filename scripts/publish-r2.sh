@@ -64,6 +64,15 @@ readonly repository_name="${REPOSITORY_NAME}"
 readonly bucket="${R2_BUCKET}"
 readonly endpoint="${R2_ENDPOINT%/}"
 readonly prefix="${R2_PREFIX:-x86_64-v3}"
+readonly server_url="${R2_PUBLIC_URL%/}"
+
+# A package filename never changes, so a long cache is right in principle. But
+# Cloudflare has served a corrupted 6226-byte copy of a 6235-byte package from
+# its edge cache while reporting the correct ETag and length -- and with
+# `immutable` the bad copy would stay for a year. A five-minute, revalidating
+# cache still absorbs the load of a repository that changes rarely, yet a bad
+# edge copy heals almost immediately.
+readonly package_cache_control='public, max-age=300, must-revalidate'
 
 # `AWS_ENDPOINT_URL_S3` only exists in aws-cli 2.13 and later; the GitHub
 # runner image and distro packages have shipped older v2 builds, and on those
@@ -204,14 +213,14 @@ if (( ${#pending[@]} > 0 )); then
     for file in "${pending[@]}"; do
         name="$(basename "$file")"
         aws_s3 cp --only-show-errors --no-progress \
-            --cache-control 'public, max-age=31536000, immutable' \
+            --cache-control "$package_cache_control" \
             --metadata "sha256=${remote_sha256[$name]}" \
             "$file" "s3://${bucket}/${prefix}/${name}"
         # The detached signature is small and immutable alongside its package.
         local_sig="${file}.sig"
         if [[ -f "$local_sig" ]]; then
             aws_s3 cp --only-show-errors --no-progress \
-                --cache-control 'public, max-age=31536000, immutable' \
+                --cache-control "$package_cache_control" \
                 "$local_sig" "s3://${bucket}/${prefix}/${name}.sig"
         fi
     done
@@ -230,7 +239,7 @@ for file in "${payload[@]}"; do
     [[ -f "$local_sig" ]] || continue
     grep -qxF -- "$file" <(printf '%s\n' "${pending[@]}") && continue
     aws_s3 cp --only-show-errors --no-progress \
-        --cache-control 'public, max-age=31536000, immutable' \
+        --cache-control "$package_cache_control" \
         "$local_sig" "s3://${bucket}/${prefix}/${name}.sig"
     sig_only=$(( sig_only + 1 ))
 done
@@ -303,10 +312,43 @@ if ! cmp -s "${verify_dir}/${repository_name}.db" "${repository_name}.db"; then
     exit 1
 fi
 
+# Verify every package through the PUBLIC URL, not the S3 endpoint. A CDN edge
+# can serve a corrupted body while reporting the right ETag and Content-Length
+# (observed: a 6226-byte body for a 6235-byte package, ETag matching the good
+# copy). Reading the object back over S3 bypasses that layer entirely, so only
+# a public fetch proves what a client actually receives. One retry covers the
+# brief window where the object is cached-but-not-yet-revalidated.
+printf 'Verifying published packages over the public URL\n'
+for file in "${payload[@]}"; do
+    name="$(basename "$file")"
+    expect_sha="$(sha256sum "$file" | awk '{print $1}')"
+    url="${server_url}/${prefix}/${name}"
+    got_sha=""
+    for attempt in 1 2 3; do
+        if curl -fsS -o "${verify_dir}/${name}" "$url"; then
+            got_sha="$(sha256sum "${verify_dir}/${name}" | awk '{print $1}')"
+            [[ "$got_sha" == "$expect_sha" ]] && break
+        fi
+        if (( attempt < 3 )); then
+            printf '  %s: public fetch does not match yet (attempt %d); retrying\n' \
+                "$name" "$attempt" >&2
+            sleep 5
+        fi
+    done
+    if [[ "$got_sha" != "$expect_sha" ]]; then
+        printf 'Public copy of %s does not match the built package.\n' "$name" >&2
+        printf '  url:       %s\n' "$url" >&2
+        printf '  built:     %s\n' "$expect_sha" >&2
+        printf '  published: %s\n' "${got_sha:-<unreadable>}" >&2
+        printf 'A CDN edge may be serving a corrupted copy; purge that URL.\n' >&2
+        exit 1
+    fi
+done
+printf 'All %d package(s) verified over the public URL.\n' "${#payload[@]}"
+
 # No fallback to the S3 endpoint: that URL is not public, so a .conf built
 # from it would look valid here and fail for every client. README carries the
 # value and the workflow checks it before anything is uploaded.
-server_url="${R2_PUBLIC_URL%/}"
 package_count="${#payload[@]}"
 updated_at="$(date -u '+%Y-%m-%d %H:%M UTC')"
 
