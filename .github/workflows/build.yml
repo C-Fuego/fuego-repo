@@ -847,6 +847,32 @@ jobs:
 
           find incoming-packages -type f -printf '%P %k KiB\n' | sort
 
+      # The publish job runs repo-add, the ABI manifest, and the install test
+      # inside the same builder image the build job used, but a job cannot see
+      # another job's step outputs -- so it pulls the image itself.
+      - name: Authenticate to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull reusable CachyOS builder
+        id: builder
+        shell: bash
+        env:
+          # Docker image references must be lowercase; the owner casing is not.
+          IMAGE_REPOSITORY: ${{ github.repository_owner }}/pkgbuild-builder
+        run: |
+          set -Eeuo pipefail
+          image="ghcr.io/${IMAGE_REPOSITORY,,}:latest"
+          if ! timeout --signal=TERM --kill-after=30s 8m docker pull "$image"; then
+            echo "Builder image unavailable; building fallback from the repository's CachyOS-v3 Dockerfile."
+            docker build --file source/.github/builder/Dockerfile --tag pkgbuild-builder:fallback source
+            image=pkgbuild-builder:fallback
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
       - name: Prepare signing key
         shell: bash
         env:
