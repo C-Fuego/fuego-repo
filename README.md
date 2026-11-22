@@ -3,7 +3,7 @@
 这个项目把 `packages/*/PKGBUILD` 自动构建成 Arch Linux `x86_64`
 软件包，并在私有 `repo` 分支维护标准 pacman 仓库数据库。
 
-当前维护 24 个 package base。
+包清单与更新策略由仓库内的 TUI/CLI 动态生成；运行 `./manage.sh packages list` 查看当前 package base。
 
 ## Features
 
@@ -28,34 +28,14 @@
 
 ## Packages
 
-| Package | Arch | 说明 |
-| --- | --- | --- |
-| `dsh-desktop-linux` | `x86_64` | DeepSeek Harness 桌面版（上游 ffyfox 的 Electron 壳 + 内嵌 dsh 运行时）；直接重新打包上游 CI 产出的 Arch 安装包，安装到 `/opt/deepseek-harness-desktop` |
-| `ffmpeg-full` | `x86_64` | 启用大量编解码器、CUDA 和 Whisper 支持的 FFmpeg |
-| `fuego-repo-keyring` | `any` | 本仓库的签名公钥；装上它即把密钥注册进 pacman keyring，装完即可让 `[fuego-repo]` 的所有签名处于可信状态 |
-| `linuxqq-wayland-fix-git` | `x86_64` | 修复 Linux QQ 在 Wayland 下的屏幕共享、声音共享、剪贴板和截图 |
-| `mpeghdec` | `x86_64` | Fraunhofer MPEG-H 解码器 |
-| `quirc` | `x86_64` | QR 解码库 |
-| `svt-jpeg-xs-git` | `x86_64` | JPEG XS 编解码器 |
-| `folia` | `x86_64` | Folia 音乐播放器（Rust + Zig 构建，`-C target-cpu=x86-64-v3`）；跟随上游 tag，安装到 `/usr/lib/folia` |
-| `zbonsai` | `x86_64` | Rezig 的 Bonsai 组件 |
-| `zclock` | `x86_64` | Rezig 的时钟组件 |
-| `zeraora` | `x86_64` | Rezig 的 Zeraora 组件 |
-| `ziglet` | `x86_64` | Rezig 的 Ziglet 组件 |
-| `zlolcat` | `x86_64` | Rezig 的 lolcat（Zig 实现） |
-| `zmatrix` | `x86_64` | Rezig 的 Matrix 数字雨效果 |
-| `zpipes` | `x86_64` | Rezig 的管道屏保 |
-| `shorin-contrib-git` | `any` | SHORiN 的 Arch 仓库贡献脚本集（VCS 包，版本由 `pkgver()` 计算） |
-| `shorin-pac-git` | `any` | Shorin 的 pacman 辅助工具（VCS 包，版本由 `pkgver()` 计算） |
-| `magpie-bin` | `x86_64` | magpie 桌面版：一处挑选所有 AI 编码代理（Codex、Claude Code、Gemini CLI 等）的模型；直接重新打包上游发布的二进制 |
-| `luciole-git` | `x86_64` | 原生 Wayland 文件管理器，支持快速预览、标签页、分屏和 Miller 列（VCS 包，版本由 `pkgver()` 计算） |
-| `ttf-jetbrains-maple-mono-xx-xx-xx` | `any` | JetBrains Maple Mono 字体：JetBrains Mono 与 Maple Mono 的融合；直接重新打包上游发布的字体包 |
-| `flyline` | `x86_64` | Bash 插件，用现代的行编辑取代 readline |
-| `steamcommunity302` | `x86_64` | Steam 社区等站点的反向代理工具，包含图形界面和命令行工具 |
-| `fcitx5-wetypex` | `x86_64` | 微信输入法的 Fcitx5 兼容层 |
-| `uu-remote-linux-bin` | `x86_64` | 非官方 UU 远程 Linux 被控端与控制端，重打包上游预编译产物 |
+README 不维护静态包表，避免新增包时产生重复编辑。使用维护入口查看实时清单：
 
-版本以各目录中的 `PKGBUILD` 和 `.SRCINFO` 为准。
+```bash
+./manage.sh packages list
+./manage.sh packages show <pkgbase>
+```
+
+每个包的版本、架构、更新轨道和构建策略以对应目录的 `PKGBUILD`、`.SRCINFO` 和 `update.toml` 为准。
 
 ## Build and CI
 

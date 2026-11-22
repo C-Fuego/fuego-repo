@@ -1,0 +1,16 @@
+pkgbase = repo-manager
+	pkgdesc = TUI maintenance entry point for a fuego-repo Arch package repository
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/C-Fuego/fuego-repo
+	arch = any
+	license = custom
+	depends = bash
+	depends = git
+	depends = fzf
+	depends = python
+	depends = pacman
+	optdepends = github-cli: dispatch builds, sync AUR sources, and inspect Actions
+	optdepends = makepkg: import and validate local PKGBUILDs
+
+pkgname = repo-manager

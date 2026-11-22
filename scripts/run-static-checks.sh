@@ -54,7 +54,6 @@ checks=(
     "package-manifest-policy"
     "bot-declarations"
     "package-manifest-tests"
-    "package-count"
     "select-packages"
     "elf-soname"
     "rebuild-triggers"
@@ -95,9 +94,6 @@ run_check() {
             # be adopted piece by piece instead of as a risky all-at-once
             # rewrite. It is a comparison, so it stays cheap and read-only.
             python3 scripts/bot/validate.py
-            ;;
-        package-count)
-            bash scripts/count-packages.sh
             ;;
         select-packages)
             python3 tests/test_select_packages.py

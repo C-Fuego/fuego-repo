@@ -1,0 +1,151 @@
+# Maintainer: C-Fuego
+pkgname=repo-manager
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='TUI maintenance entry point for a fuego-repo Arch package repository'
+arch=('any')
+url='https://github.com/C-Fuego/fuego-repo'
+license=('custom')
+depends=('bash' 'git' 'fzf' 'python' 'pacman')
+optdepends=(
+  'github-cli: dispatch builds, sync AUR sources, and inspect Actions'
+  'makepkg: import and validate local PKGBUILDs'
+)
+source=()
+sha256sums=()
+
+package() {
+  install -Dm755 /dev/stdin "$pkgdir/usr/bin/repo-manager" <<'SCRIPT'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly default_remote='git@github.com:C-Fuego/fuego-repo.git'
+readonly sparse_file=(
+  manage.sh
+  scripts/**
+  config/**
+  packages/**
+  .gitignore
+  .gitattributes
+)
+
+usage() {
+  cat <<'HELP'
+Usage: repo-manager [--repo DIR] [--remote URL] [--branch NAME] [--no-push]
+       repo-manager init DIR [--remote URL] [--branch NAME]
+       repo-manager update [--repo DIR]
+
+Open the fuego-repo TUI from a lightweight sparse checkout.
+
+  init DIR       Clone a blobless sparse maintenance checkout.
+  update         Fast-forward an existing checkout.
+  --repo DIR     Use this checkout instead of auto-detecting one.
+  --remote URL   Repository URL used by init (default: C-Fuego/fuego-repo).
+  --branch NAME  Branch used by init (default: main).
+  --no-push      Start the TUI with automatic pushing disabled.
+HELP
+}
+
+repo_root=''
+remote="$default_remote"
+branch='main'
+no_push=0
+
+find_repo() {
+  local candidate="${REPO_MANAGER_REPO:-$PWD}"
+  while [[ "$candidate" != / ]]; do
+    if git -C "$candidate" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
+       [[ -f "$candidate/manage.sh" && -d "$candidate/packages" ]]; then
+      repo_root="$(cd -- "$candidate" && pwd -P)"
+      return 0
+    fi
+    candidate="$(dirname -- "$candidate")"
+  done
+  return 1
+}
+
+init_repo() {
+  local target="$1"
+  [[ "$target" = /* ]] || target="$PWD/$target"
+  if [[ -e "$target" ]]; then
+    printf '目标已存在：%s\n' "$target" >&2
+    return 2
+  fi
+  git clone --filter=blob:none --no-checkout --branch "$branch" "$remote" "$target"
+  git -C "$target" sparse-checkout init --cone
+  git -C "$target" sparse-checkout set --no-cone \
+    manage.sh scripts config packages .gitignore .gitattributes
+  repo_root="$(cd -- "$target" && pwd -P)"
+  printf '已创建维护入口：%s\n' "$repo_root"
+}
+
+update_repo() {
+  git -C "$repo_root" pull --ff-only origin main
+}
+
+if [[ "${1:-}" == '-h' || "${1:-}" == '--help' ]]; then
+  usage
+  exit 0
+fi
+if [[ "${1:-}" == 'init' ]]; then
+  shift
+  [[ $# -ge 1 ]] || { printf 'init 需要目标目录\n' >&2; exit 2; }
+  target="$1"; shift
+  while (($#)); do
+    case "$1" in
+      --remote) remote="$2"; shift 2 ;;
+      --branch) branch="$2"; shift 2 ;;
+      -h|--help) usage; exit 0 ;;
+      *) printf '未知选项：%s\n' "$1" >&2; exit 2 ;;
+    esac
+  done
+  init_repo "$target"
+  exec "$repo_root/manage.sh" --no-push
+fi
+
+explicit_repo=''
+declare -a passthrough=()
+while (($#)); do
+  case "$1" in
+    --repo) explicit_repo="$2"; shift 2 ;;
+    --remote) remote="$2"; shift 2 ;;
+    --branch) branch="$2"; shift 2 ;;
+    --no-push) no_push=1; shift ;;
+    update) update_requested=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; passthrough+=("$@"); break ;;
+    *) passthrough+=("$1"); shift ;;
+  esac
+done
+
+if [[ -n "$explicit_repo" ]]; then
+  repo_root="$(cd -- "$explicit_repo" 2>/dev/null && pwd -P)" || {
+    printf '仓库目录不存在：%s\n' "$explicit_repo" >&2; exit 1;
+  }
+elif ! find_repo; then
+  printf '未找到维护入口。先运行：repo-manager init ~/Projects/fuego-repo-maint\n' >&2
+  exit 1
+fi
+
+[[ -x "$repo_root/manage.sh" ]] || chmod +x "$repo_root/manage.sh"
+if [[ "${update_requested:-0}" == 1 ]]; then
+  update_repo
+  exit 0
+fi
+if (( no_push )); then
+  exec "$repo_root/manage.sh" --no-push "${passthrough[@]}"
+fi
+exec "$repo_root/manage.sh" "${passthrough[@]}"
+SCRIPT
+
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/licenses/$pkgname/LICENSE" <<'LICENSE'
+MIT License
+
+Copyright (c) 2026 C-Fuego
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files, to deal in the Software
+without restriction, including without limitation the rights to use, copy,
+modify, merge, publish, distribute, sublicense, and/or sell copies.
+LICENSE
+}

@@ -1,0 +1,3 @@
+track = "manual"
+strategy = "source"
+reason = "Maintained with the repository manager launcher; update manually when its interface or bootstrap behavior changes."
