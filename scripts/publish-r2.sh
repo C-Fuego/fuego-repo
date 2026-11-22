@@ -378,29 +378,43 @@ if [[ -n "$cdn_zone_id" || -n "$cdn_api_token" ]]; then
         fi
     done
     purge_cdn_batch() {
-        local request response attempt
+        local request response attempt http_code reason
         request="$(python3 -c 'import json,sys; print(json.dumps({"files": sys.argv[1:]}))' "$@")"
+        reason=""
         for attempt in 1 2 3; do
+            # The status line is appended after the body so a refusal (bad
+            # token, wrong zone) can be told apart from a network failure.
             response="$(curl -sS --max-time 30 -X POST \
                 "${cdn_api}/zones/${cdn_zone_id}/purge_cache" \
                 -H "Authorization: Bearer ${cdn_api_token}" \
                 -H 'Content-Type: application/json' \
-                --data "$request" 2>/dev/null || true)"
-            if python3 -c '
+                --data "$request" -w '\n%{http_code}' 2>&1 || true)"
+            http_code="${response##*$'\n'}"
+            response="${response%$'\n'*}"
+            if reason="$(python3 -c '
 import json, sys
 try:
     data = json.loads(sys.argv[1])
 except ValueError:
+    print("no JSON in the response: " + sys.argv[1][:200].strip())
     sys.exit(1)
-sys.exit(0 if data.get("success") else 1)
-' "$response" 2>/dev/null; then
+if data.get("success"):
+    sys.exit(0)
+errors = data.get("errors") or []
+print("; ".join("%s: %s" % (e.get("code"), e.get("message")) for e in errors)
+      or "success=false with no error list")
+sys.exit(1)
+' "$response" 2>&1)"; then
                 return 0
             fi
             if (( attempt < 3 )); then
                 sleep 5
             fi
         done
-        printf 'Could not purge %d URL(s) from the CDN cache.\n' "$#" >&2
+        # Only Cloudflare's own error text is printed, never the request, so no
+        # token can reach the log.
+        printf 'Could not purge %d URL(s) from the CDN cache (HTTP %s).\n' "$#" "$http_code" >&2
+        printf '  Cloudflare said: %s\n' "$reason" >&2
         printf 'Clients may keep receiving the previous bytes until the edge expires them.\n' >&2
         printf 'Purge them by hand (Caching -> Purge Cache -> single URL):\n' >&2
         printf '  %s\n' "$@" >&2
