@@ -183,6 +183,10 @@ as_builder() {
 # shellcheck disable=SC1090
 source "$native_profile"
 
+# makepkg does not preserve compiler flags from its environment. Install the
+# checkout's profile after distro rust.conf, including when using an older image.
+install -Dm0644 "$workspace_dir/config/emo-native-flags.conf" /etc/makepkg.conf.d/zzzz-emo-native.conf
+
 as_builder bash "$workspace_dir/scripts/prepare-build-source.sh" "$package_dir"
 
 # 构建产物必须严格新于仓库里已发布的同名包：pacman 只按版本号判断升级，

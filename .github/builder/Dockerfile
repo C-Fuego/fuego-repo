@@ -6,7 +6,8 @@ ARG CUDA_BUILDER=0
 # instead of relying on a hash of this file alone.
 ARG BUILDER_GENERATION=dev
 LABEL org.emoeem.builder.generation="${BUILDER_GENERATION}"
-COPY config/emo-native-flags.conf /etc/makepkg.conf.d/90-emo-native.conf
+# Must sort after the distro rust.conf, which otherwise restores target-cpu=native.
+COPY config/emo-native-flags.conf /etc/makepkg.conf.d/zzzz-emo-native.conf
 
 RUN sed -i '/^\[options\]$/a DisableSandboxNetwork' /etc/pacman.conf \
     && sed -i '/^\[options\]$/a ParallelDownloads = 8' /etc/pacman.conf \

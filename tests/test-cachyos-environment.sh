@@ -36,7 +36,8 @@ if [[ "$mode" == builder ]]; then
     rm -f /tmp/emo-objc-test.o
     check 'pacman: DisableSandboxNetwork' bash -c 'pacman-conf DisableSandboxNetwork | grep -Fxq DisableSandboxNetwork'
     check 'environment: PKGBUILD_BUILDER_IMAGE=1' test "${PKGBUILD_BUILDER_IMAGE:-0}" = 1
-    check 'config: 90-emo-native.conf' test -f /etc/makepkg.conf.d/90-emo-native.conf
+    check 'config: zzzz-emo-native.conf' test -f /etc/makepkg.conf.d/zzzz-emo-native.conf
+    check 'Rust flags: portable x86-64-v3 wins over distro native' bash -c 'source /usr/share/makepkg/util/config.sh; source_makepkg_config; [[ "$RUSTFLAGS" == *"target-cpu=x86-64-v3"* && "$RUSTFLAGS" != *"target-cpu=native"* ]]'
 fi
 
 if [[ "$mode" == cuda ]]; then

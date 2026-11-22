@@ -52,6 +52,10 @@ grep -Fq -- "'cuda'" "$root/packages/ffmpeg-full/PKGBUILD" \
 grep -Fq -- 'NVCC_CCBIN=/usr/bin/g++-15' "$root/scripts/build-in-arch.sh" \
     || fail 'ffmpeg-full builder path does not pin nvcc to GCC 15'
 printf '%s\n' '3/14: verify the portable x86-64-v3 profile and RTX 4050 CUDA target'
+grep -Fq -- 'zzzz-emo-native.conf' "$root/.github/builder/Dockerfile" \
+    || fail 'builder native makepkg profile does not load after distro rust.conf'
+grep -Fq -- 'zzzz-emo-native.conf' "$root/scripts/build-in-clean-chroot.sh" \
+    || fail 'clean chroot native makepkg profile does not load after distro rust.conf'
 grep -Fq -- '-march=x86-64-v3 -mtune=generic -O3' "$root/config/emo-native-flags.conf" || fail 'portable x86-64-v3 profile missing'
 # znver3 emits AMD-only SSE4a (insertq/extrq); a published libflyline.so built with it
 # raised SIGILL in bash on an Intel CPU. No vendor-specific target may come back.

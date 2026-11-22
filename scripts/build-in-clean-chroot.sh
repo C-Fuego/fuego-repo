@@ -54,7 +54,7 @@ cleanup_paths=("$nspawn_wrapper_dir")
 cleanup() { rm -rf -- "${cleanup_paths[@]}"; }
 trap cleanup EXIT INT TERM
 export PATH="$nspawn_wrapper_dir:$PATH"
-fingerprint="$( { cat "$base_config"; printf '\n%s\n%s\nflavor=%s\n' "$generation" "$architecture" "$builder_flavor"; sha256sum /etc/makepkg.conf /etc/makepkg.conf.d/90-emo-native.conf "$0" 2>/dev/null || true; } | sha256sum | cut -c1-20)"
+fingerprint="$( { cat "$base_config"; printf '\n%s\n%s\nflavor=%s\n' "$generation" "$architecture" "$builder_flavor"; sha256sum /etc/makepkg.conf /etc/makepkg.conf.d/zzzz-emo-native.conf "$0" 2>/dev/null || true; } | sha256sum | cut -c1-20)"
 baseline_name="baseline-${generation}-${architecture}-${fingerprint}"
 cache_fs="$(stat -f -c %T "$cache_dir/chroot")"
 # 基线以「容器内 root 打包的归档」为缓存单元:树里有 0700 的 gnupg 目录,
@@ -83,8 +83,8 @@ if [[ ! -f "$baseline/FINGERPRINT" || ! -x "$baseline/root/usr/bin/bash" ]]; the
         if [[ "$builder_flavor" == 1 ]]; then base_packages+=(cuda gcc15); fi
         mkarchroot -C "$base_config" -c "$cache_dir/pacman" "$baseline/root" "${base_packages[@]}"
         install -d "$baseline/root/etc/makepkg.conf.d"
-        [[ ! -f /etc/makepkg.conf.d/90-emo-native.conf ]] || install -m0644 /etc/makepkg.conf.d/90-emo-native.conf "$baseline/root/etc/makepkg.conf.d/90-emo-native.conf"
-        cat >> "$baseline/root/etc/makepkg.conf.d/90-emo-native.conf" <<'__CACHE_ENV__'
+        [[ ! -f /etc/makepkg.conf.d/zzzz-emo-native.conf ]] || install -m0644 /etc/makepkg.conf.d/zzzz-emo-native.conf "$baseline/root/etc/makepkg.conf.d/zzzz-emo-native.conf"
+        cat >> "$baseline/root/etc/makepkg.conf.d/zzzz-emo-native.conf" <<'__CACHE_ENV__'
 export CARGO_HOME=/cache/cargo
 export CCACHE_DIR=/cache/ccache
 export CCACHE_MAXSIZE=2G
