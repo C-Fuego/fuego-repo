@@ -24,10 +24,11 @@ depends=(
   'pango'
   'sdl2'
   'wayland'
+  # emoeem overlay: link dependencies of the shipped portal plugin
+  'libei'
+  'libpipewire'
 )
 optdepends=(
-  'libei: GNOME/KDE Wayland portal backend'
-  'libpipewire: GNOME/KDE Wayland portal backend'
   'wl-clipboard: clipboard sync on Wayland'
   'nvidia-utils: NVENC hardware encoding'
   'intel-media-driver: VAAPI hardware encoding on Intel GPUs'

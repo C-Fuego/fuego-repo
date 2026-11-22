@@ -21,5 +21,20 @@ if marker not in text and count:
   local _desktop_dir=packaging/common/desktop
   [[ -d "${{_desktop_dir}}" ]] || _desktop_dir=contrib/desktop
 {first}''', 1)
+
+# The shipped portal plugin links these libraries directly.
+portal_optdepends = (
+    "  'libei: GNOME/KDE Wayland portal backend'\n"
+    "  'libpipewire: GNOME/KDE Wayland portal backend'\n"
+)
+if portal_optdepends in text:
+    boundary = ')\noptdepends=(\n'
+    if text.count(boundary) != 1:
+        raise SystemExit('expected one boundary between depends and optdepends')
+    text = text.replace(portal_optdepends, '', 1)
+    text = text.replace(boundary, "  # emoeem overlay: link dependencies of the shipped portal plugin\n"
+                        "  'libei'\n  'libpipewire'\n" + boundary, 1)
+
+if text != path.read_text():
     path.write_text(text)
 PY
