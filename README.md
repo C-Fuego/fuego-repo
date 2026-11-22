@@ -222,25 +222,26 @@ R2 里只保留当前数据库能解析到的那些 `.pkg.tar.zst`，不会有�
 
 ```ini
 [fuego-repo]
-SigLevel = Optional TrustedOnly
 Server = https://ignacio.dpdns.org/x86_64-v3
 ```
 
-`Optional TrustedOnly` 是 pacman 的默认值：**有签名就验证**（`.db.sig`、
-`.files.sig` 和每个包的 `.sig` 都由 `build.yml` 的签名步骤产出，所以都会被验），
-**但本地 keyring 里没有这条 key 时只是“不校验”而不是拒绝**。这样新机器可以
-先同步数据库、再装 keyring 包，装完 keyring 后所有签名就都处于可信状态。
+**故意不写 `SigLevel` 那一行**（和 archlinuxcn 的做法一致）：pacman 于是采用
+`/etc/pacman.conf` `[options]` 里的全局默认 `SigLevel = Optional TrustedOnly`。
+该值的含义是**有签名就验证**（`.db.sig`、`.files.sig` 和每个包的 `.sig` 都由
+`build.yml` 的签名步骤产出，所以都会被验），**但本地 keyring 里还没有这条 key
+时只是“这次不校验”，不会拒绝同步**。这样新机器可以先同步数据库、再装 keyring 包，
+装完 keyring 后所有签名就都处于可信状态——整个流程不需要任何手动 `pacman-key`。
 
 首次使用：
 
 ```bash
-sudo pacman -Sy
-sudo pacman -S fuego-repo-keyring    # 把签名 key 装进 pacman keyring
+sudo pacman -Sy                          # 数据库同步成功（key 未知时只提示，不拒绝）
+sudo pacman -S fuego-repo-keyring        # 把签名 key 装进 pacman keyring，此后全部验签
 ```
 
 如果你更想强制验签（任何未信任的 key 一律拒绝，但新机器必须先手动
-`pacman-key --add` + `--lsign-key` 才能同步），把这一行换成
-`SigLevel = Required DatabaseRequired`。完全不启用签名则换成 `SigLevel = Never`。
+`pacman-key --add` + `--lsign-key` 才能同步），在 `[fuego-repo]` 段里加一行
+`SigLevel = Required DatabaseRequired`。完全不启用签名则加 `SigLevel = Never`。
 
 桶的布局就是 pacman 的布局，一个前缀一个架构：
 
@@ -365,8 +366,8 @@ R2 争用同一名字，需要先删掉。
 
 工作流会签名每个软件包、数据库和 files 数据库，并将公钥导出为
 `x86_64-v3/fuego-repo-key.asc`。装上 `fuego-repo-keyring` 就会把该公钥
-导入并本地信任，默认的 `SigLevel = Optional TrustedOnly` 随即对所有签名
-生效；若想强制拒绝任何未信任的 key，可改回
+导入并本地信任，全局默认的 `SigLevel = Optional TrustedOnly` 随即对所有签名
+生效；若想强制拒绝任何未信任的 key，可在 `[fuego-repo]` 段加一行
 `SigLevel = Required DatabaseRequired`。
 
 建议为 CI 单独创建仅用于仓库签名的 GPG 子密钥。
