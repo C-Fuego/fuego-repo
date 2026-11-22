@@ -343,7 +343,9 @@ if ! cmp -s "${verify_dir}/${repository_name}.db" "${repository_name}.db"; then
     exit 1
 fi
 
-# Verify every package through the PUBLIC URL, not the S3 endpoint. A CDN edge
+# Verify newly uploaded packages through the PUBLIC URL. Unchanged packages
+# need no repeat download; stop on the first 403 because this runner is blocked.
+# A CDN edge
 # can serve a corrupted body while reporting the right ETag and Content-Length
 # (observed: a 6226-byte body for a 6235-byte package, ETag matching the good
 # copy). Reading the object back over S3 bypasses that layer entirely, so only
@@ -437,9 +439,10 @@ sys.exit(1)
     fi
 fi
 
-printf 'Verifying published packages over the public URL\n'
+printf 'Verifying %d newly uploaded package(s) over the public URL\n' "${#pending[@]}"
 unverified=0
-for file in "${payload[@]}"; do
+public_blocked=0
+for file in "${pending[@]}"; do
     name="$(basename "$file")"
     expect_sha="$(sha256sum "$file" | awk '{print $1}')"
     # R2_PUBLIC_URL already points at the package directory (it is the exact
@@ -449,13 +452,17 @@ for file in "${payload[@]}"; do
     url="${server_url}/${name}"
     got_sha=""
     http_code=""
-    for attempt in 1 2 3; do
-        http_code="$(curl -sS -o "${verify_dir}/${name}" -w '%{http_code}' "$url" || true)"
+    attempts=3
+    for (( attempt=1; attempt<=attempts; attempt++ )); do
+        http_code="$(curl -sS --connect-timeout 5 --max-time 60 -o "${verify_dir}/${name}" -w '%{http_code}' "$url" || true)"
         if [[ "$http_code" == 2* ]]; then
             got_sha="$(sha256sum "${verify_dir}/${name}" | awk '{print $1}')"
             [[ "$got_sha" == "$expect_sha" ]] && break
+        elif [[ "$http_code" == 403 ]]; then
+            public_blocked=1
+            break
         fi
-        if (( attempt < 3 )); then
+        if (( attempt < attempts )); then
             printf '  %s: attempt %d returned HTTP %s; retrying\n' \
                 "$name" "$attempt" "${http_code:-<no response>}" >&2
             sleep 5
@@ -481,12 +488,18 @@ for file in "${payload[@]}"; do
         "$name" "${http_code:-<no response>}" >&2
     printf '  A CDN WAF may be blocking this runner; the object itself was verified over S3.\n' >&2
     unverified=$((unverified + 1))
+    if (( public_blocked )); then
+        printf 'Public URL returned HTTP 403; skipping remaining public checks for this runner.\n' >&2
+        break
+    fi
 done
-if (( unverified > 0 )); then
+if (( public_blocked )); then
+    printf 'Public verification stopped because access was denied; remaining uploads were not checked over HTTP.\n'
+elif (( unverified > 0 )); then
     printf '%d package(s) could not be verified over the public URL (object verified over S3).\n' \
         "$unverified"
 else
-    printf 'All %d package(s) verified over the public URL.\n' "${#payload[@]}"
+    printf 'All %d newly uploaded package(s) verified over the public URL.\n' "${#pending[@]}"
 fi
 
 # No fallback to the S3 endpoint: that URL is not public, so a .conf built
