@@ -2,7 +2,7 @@
 # 本地编译包（x86_64-v3 优化）：source 为 Rezig monorepo，makepkg 时编译。
 pkgname=zmatrix
 pkgver=1.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc="cmatrix clone written in Zig"
 arch=('x86_64')
 options=('!debug' '!strip')
@@ -10,7 +10,7 @@ url="https://github.com/C-Fuego/Rezig"
 license=('MIT')
 depends=()
 makedepends=('zig')
-_commit=HEAD   # 换成固定 commit/tag 可复现
+_commit=54f24d2a35434b4e77e4b6bcef97378e4c4d9d24
 source=("$pkgname::git+https://github.com/C-Fuego/Rezig#commit=$_commit")
 sha256sums=('SKIP')
 
