@@ -226,7 +226,16 @@ if [[ -n "$signing_key" ]]; then
         "${repository_name}.files.tar.zst.sig" \
         "${repository_dir}/${repository_name}.files.sig"
 
-    signature_level="Required DatabaseRequired"
+    # Signatures are still produced and published (<repo>.db.sig etc.), but the
+    # .conf does not force pacman to require them. 'Required DatabaseRequired'
+    # makes first contact impossible without a manual 'pacman-key --lsign-key':
+    # the database cannot be validated until the key is trusted, the keyring
+    # package cannot be installed until the database syncs, and the key cannot
+    # be fetched from a keyserver it was never uploaded to. The default
+    # 'Optional TrustedOnly' verifies whatever signature is present and only
+    # refuses a key the local keyring explicitly distrusts, so a fresh machine
+    # can sync, install fuego-repo-keyring, and then be fully verified.
+    signature_level="Optional TrustedOnly"
 else
     signature_level="Never"
 fi

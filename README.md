@@ -32,7 +32,7 @@
 | --- | --- | --- |
 | `dsh-desktop-linux` | `x86_64` | DeepSeek Harness 桌面版（上游 ffyfox 的 Electron 壳 + 内嵌 dsh 运行时）；直接重新打包上游 CI 产出的 Arch 安装包，安装到 `/opt/deepseek-harness-desktop` |
 | `ffmpeg-full` | `x86_64` | 启用大量编解码器、CUDA 和 Whisper 支持的 FFmpeg |
-| `fuego-repo-keyring` | `any` | 本仓库的签名公钥；装上它即把密钥注册进 pacman keyring，`[fuego-repo]` 可直接用 `SigLevel = Required` |
+| `fuego-repo-keyring` | `any` | 本仓库的签名公钥；装上它即把密钥注册进 pacman keyring，装完即可让 `[fuego-repo]` 的所有签名处于可信状态 |
 | `linuxqq-wayland-fix-git` | `x86_64` | 修复 Linux QQ 在 Wayland 下的屏幕共享、声音共享、剪贴板和截图 |
 | `mpeghdec` | `x86_64` | Fraunhofer MPEG-H 解码器 |
 | `quirc` | `x86_64` | QR 解码库 |
@@ -222,14 +222,25 @@ R2 里只保留当前数据库能解析到的那些 `.pkg.tar.zst`，不会有�
 
 ```ini
 [fuego-repo]
-SigLevel = Required DatabaseRequired
+SigLevel = Optional TrustedOnly
 Server = https://ignacio.dpdns.org/x86_64-v3
 ```
 
-`SigLevel` 里的 `Required` 要求仓库签名 key 已经通过 keyring 包装进
-`/etc/pacman.d/gnupg`，`DatabaseRequired` 要求数据库本身带 `.sig`。两样都由
-`build.yml` 的签名步骤产出；如果不启用签名，把这一行换成 `SigLevel = Never`
-（此时 `Server` 不变）。
+`Optional TrustedOnly` 是 pacman 的默认值：**有签名就验证**（`.db.sig`、
+`.files.sig` 和每个包的 `.sig` 都由 `build.yml` 的签名步骤产出，所以都会被验），
+**但本地 keyring 里没有这条 key 时只是“不校验”而不是拒绝**。这样新机器可以
+先同步数据库、再装 keyring 包，装完 keyring 后所有签名就都处于可信状态。
+
+首次使用：
+
+```bash
+sudo pacman -Sy
+sudo pacman -S fuego-repo-keyring    # 把签名 key 装进 pacman keyring
+```
+
+如果你更想强制验签（任何未信任的 key 一律拒绝，但新机器必须先手动
+`pacman-key --add` + `--lsign-key` 才能同步），把这一行换成
+`SigLevel = Required DatabaseRequired`。完全不启用签名则换成 `SigLevel = Never`。
 
 桶的布局就是 pacman 的布局，一个前缀一个架构：
 
@@ -353,7 +364,9 @@ Settings → Custom Domains）。接上之前若该主机名已有 A/AAAA 记录
 R2 争用同一名字，需要先删掉。
 
 工作流会签名每个软件包、数据库和 files 数据库，并将公钥导出为
-`x86_64-v3/fuego-repo-key.asc`。客户端导入并本地信任该密钥后，可改用
+`x86_64-v3/fuego-repo-key.asc`。装上 `fuego-repo-keyring` 就会把该公钥
+导入并本地信任，默认的 `SigLevel = Optional TrustedOnly` 随即对所有签名
+生效；若想强制拒绝任何未信任的 key，可改回
 `SigLevel = Required DatabaseRequired`。
 
 建议为 CI 单独创建仅用于仓库签名的 GPG 子密钥。
