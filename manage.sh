@@ -45,7 +45,7 @@ usage() {
     cat <<EOF
 用法：$(basename "$0") [选项] [动作代号]
 
-不带动作代号时打开基于 fzf 的私人软件仓库管理界面。
+不带动作代号时打开基于 fzf 的 Arch 软件仓库管理界面。
 
   --no-push   启动时关闭自动 Git 推送（只影响界面里的开关初值）
   --list      列出所有动作代号（一行一个，制表符分隔说明），给脚本/补全用
@@ -76,6 +76,7 @@ readonly -a manage_actions=(
     'dashboard:show_dashboard:仓库状态总览'
     'add:add_package_local:添加软件包（本地导入）'
     'packages:show_packages_overview:软件包与更新策略总览'
+    'package-center:package_center:查询并操作软件包'
     'add-aur:add_aur_package:添加 AUR 软件包（旧 Git 流程）'
     'add-custom:add_custom_package:从自定义 Git 添加软件包（旧 Git 流程）'
     'remove:remove_package:从仓库删除软件包'
@@ -175,11 +176,13 @@ readonly -a fzf_options=(
     --color='border:bright-black,prompt:cyan,pointer:yellow,marker:green,header:blue'
 )
 
+preview_root="$(printf '%q' "$repo_root")"
+readonly preview_root
 readonly -a fzf_package_options=(
     "${fzf_options[@]}"
     --delimiter=$'\t'
     --with-nth=1..
-    --preview="sed -n '1,220p' '${repo_root}/packages/{1}/PKGBUILD'"
+    --preview="sed -n '1,220p' ${preview_root}/packages/{1}/PKGBUILD"
     --preview-window='right:55%:wrap'
     --bind='ctrl-/:toggle-preview'
 )
@@ -209,7 +212,7 @@ managed_packages() {
 }
 
 package_records() {
-    local package_dir package_name pkgdesc pkgrel pkgver arch
+    local package_dir package_name pkgdesc pkgrel pkgver arch track strategy
 
     while IFS= read -r package_dir; do
         package_name="$(basename "$package_dir")"
@@ -221,8 +224,12 @@ package_records() {
             "${package_dir}/.SRCINFO")"
         arch="$(awk -F ' = ' '$1 == "\tarch" { print $2; exit }' \
             "${package_dir}/.SRCINFO")"
-        printf '%s\t%s-%s\t%s\t%s\n' \
-            "$package_name" "$pkgver" "$pkgrel" "$arch" "$pkgdesc"
+        track="$(awk -F ' = ' '$1 == "track" { print $2; exit }' \
+            "${package_dir}/update.toml")"
+        strategy="$(awk -F ' = ' '$1 == "strategy" { print $2; exit }' \
+            "${package_dir}/update.toml")"
+        printf '%s\t%s-%s\t%s\t%s\t%s\t%s\n' \
+            "$package_name" "$pkgver" "$pkgrel" "$arch" "$track" "$strategy" "$pkgdesc"
     done < <(
         find "${repo_root}/packages" \
             -mindepth 2 \
@@ -282,9 +289,37 @@ select_managed_package() {
     selected="$(
         package_records |
             fzf "${fzf_package_options[@]}" --prompt='软件包> ' \
-                --header='包名 | 版本 | 架构 | 描述（预览 PKGBUILD）'
+                --header='包名 | 版本 | 架构 | 更新 | 构建 | 描述（预览 PKGBUILD）'
     )" || return
     printf '%s\n' "${selected%%$'\t'*}"
+}
+
+package_center() {
+    local selected action package_name
+    selected="$(package_records | fzf "${fzf_package_options[@]}" --prompt='软件包中心> ' \
+        --header='输入关键字搜索；Enter 查看详情；Ctrl-B 选择构建' \
+        --expect=ctrl-b)" || return
+    action="${selected%%$'\n'*}"
+    selected="${selected#*$'\n'}"
+    package_name="${selected%%$'\t'*}"
+    [[ -n "$package_name" ]] || return
+    if [[ "$action" == ctrl-b ]]; then
+        build_one_package "$package_name"
+    else
+        python3 "${repo_root}/scripts/bot/manage.py" packages show "$package_name"
+        pause_after_action
+    fi
+}
+
+build_one_package() {
+    local package_name="$1"
+    local make_jobs package_csv
+    require_gh || return
+    make_jobs="$(select_one '编译线程数' "${default_make_jobs} （默认）" 1 2 3 4)" || return
+    package_csv="$package_name"
+    gh workflow run build.yml --repo "$github_repository" --ref main \
+        -f "packages=${package_csv}" -f "make_jobs=${make_jobs%% *}"
+    printf '已请求构建：%s（编译线程数：%s）\n' "$package_name" "${make_jobs%% *}"
 }
 
 select_managed_packages() {
@@ -296,7 +331,7 @@ select_managed_packages() {
             "${fzf_package_options[@]}" \
             --multi \
             --bind='ctrl-a:select-all,ctrl-d:deselect-all' \
-            --header='包名 | 版本 | 架构 | 描述；Tab：选择  Ctrl-A：全选  Ctrl-D：取消全选' \
+            --header='包名 | 版本 | 架构 | 更新 | 构建 | 描述；Tab：选择  Ctrl-A：全选  Ctrl-D：取消全选' \
             --prompt='软件包> '
     )" || return
     while IFS=$'\t' read -r package_name _; do
@@ -336,7 +371,7 @@ select_build_packages() {
             "${fzf_package_options[@]}" \
             --multi \
             --bind='ctrl-a:select-all,ctrl-d:deselect-all' \
-            --header='包名 | 版本 | 架构 | 描述；选择“全部软件包”，或使用 Tab 多选' \
+            --header='包名 | 版本 | 架构 | 更新 | 构建 | 描述；选择“全部软件包”，或使用 Tab 多选' \
             --prompt='构建软件包> '
     )" || return
     while IFS=$'\t' read -r package_name _; do
@@ -784,7 +819,7 @@ translate_action_conclusion() {
 translate_workflow_name() {
     case "$1" in
         'Build Arch repository')
-            printf '构建私人 Arch 仓库'
+            printf '构建 Arch 仓库'
             ;;
         'Remove packages from private repository')
             printf '从私人仓库删除软件包'

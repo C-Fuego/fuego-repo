@@ -1,7 +1,7 @@
 # Maintainer: C-Fuego
 pkgname=repo-manager
 pkgver=0.1.0
-pkgrel=2
+pkgrel=3
 pkgdesc='TUI maintenance entry point for a fuego-repo Arch package repository'
 arch=('any')
 url='https://github.com/C-Fuego/fuego-repo'
@@ -20,29 +20,29 @@ package() {
 set -Eeuo pipefail
 
 readonly default_remote='git@github.com:C-Fuego/fuego-repo.git'
-readonly sparse_file=(
-  manage.sh
-  scripts/**
-  config/**
-  packages/**
-  .gitignore
-  .gitattributes
-)
 
 usage() {
   cat <<'HELP'
-Usage: repo-manager [--repo DIR] [--remote URL] [--branch NAME] [--no-push]
+Usage: repo-manager --repo DIR [--no-push] [ACTION [ARGS...]]
        repo-manager init DIR [--remote URL] [--branch NAME]
-       repo-manager update [--repo DIR]
+       repo-manager update --repo DIR
+       repo-manager --help
 
-Open the fuego-repo TUI from a lightweight sparse checkout.
+Open the fuego-repo TUI from a lightweight sparse checkout, or run ACTION directly.
 
   init DIR       Clone a blobless sparse maintenance checkout.
-  update         Fast-forward an existing checkout.
+  update         Fast-forward an existing checkout from its configured upstream.
   --repo DIR     Required checkout path; no implicit current-directory discovery.
   --remote URL   Repository URL used by init (default: C-Fuego/fuego-repo).
   --branch NAME  Branch used by init (default: main).
-  --no-push      Start the TUI with automatic pushing disabled.
+  --no-push      Start manage.sh with automatic pushing disabled.
+
+Examples:
+  repo-manager --repo DIR --list
+  repo-manager --repo DIR -- --help           # manage.sh help
+  repo-manager --repo DIR packages --help    # package CLI help
+  repo-manager --repo DIR packages list
+  repo-manager --repo DIR build
 HELP
 }
 
@@ -87,21 +87,27 @@ init_repo() {
 }
 
 update_repo() {
-  git -C "$repo_root" pull --ff-only origin main
+  git -C "$repo_root" pull --ff-only
 }
 
-if [[ "${1:-}" == '-h' || "${1:-}" == '--help' ]]; then
-  usage
-  exit 0
-fi
+require_value() {
+  if [[ -z "${2:-}" || "$2" == --* ]]; then
+    printf '选项 %s 需要一个值。\n' "$1" >&2
+    exit 2
+  fi
+}
+
 if [[ "${1:-}" == 'init' ]]; then
   shift
-  [[ $# -ge 1 ]] || { printf 'init 需要目标目录\n' >&2; exit 2; }
+  case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+    ''|-*) printf 'init 需要目标目录\n' >&2; exit 2 ;;
+  esac
   target="$1"; shift
   while (($#)); do
     case "$1" in
-      --remote) remote="$2"; shift 2 ;;
-      --branch) branch="$2"; shift 2 ;;
+      --remote) require_value "$@"; remote="$2"; shift 2 ;;
+      --branch) require_value "$@"; branch="$2"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) printf '未知选项：%s\n' "$1" >&2; exit 2 ;;
     esac
@@ -111,31 +117,40 @@ if [[ "${1:-}" == 'init' ]]; then
 fi
 
 explicit_repo=''
-declare -a passthrough=()
+update_requested=0
+# Parse only the launcher prefix. Once the manage.sh action begins, values such
+# as a package named "update" or its subcommand's --help must pass unchanged.
 while (($#)); do
   case "$1" in
-    --repo) explicit_repo="$2"; shift 2 ;;
-    --remote) remote="$2"; shift 2 ;;
-    --branch) branch="$2"; shift 2 ;;
+    --repo) require_value "$@"; explicit_repo="$2"; shift 2 ;;
     --no-push) no_push=1; shift ;;
-    update) update_requested=1; shift ;;
+    update)
+      if (( update_requested )); then
+        printf 'update 只能指定一次。\n' >&2
+        exit 2
+      fi
+      update_requested=1; shift ;;
     -h|--help) usage; exit 0 ;;
-    --) shift; passthrough+=("$@"); break ;;
-    *) passthrough+=("$1"); shift ;;
+    --) shift; break ;;
+    *) break ;;
   esac
 done
 
+if (( update_requested )) && (( $# )); then
+  printf 'update 不接受此参数：%s\n' "$1" >&2
+  exit 2
+fi
 require_repo
 
-[[ -x "$repo_root/manage.sh" ]] || chmod +x "$repo_root/manage.sh"
-if [[ "${update_requested:-0}" == 1 ]]; then
+if (( update_requested )); then
   update_repo
   exit 0
 fi
+[[ -x "$repo_root/manage.sh" ]] || chmod +x "$repo_root/manage.sh"
 if (( no_push )); then
-  exec "$repo_root/manage.sh" --no-push "${passthrough[@]}"
+  set -- --no-push "$@"
 fi
-exec "$repo_root/manage.sh" "${passthrough[@]}"
+exec "$repo_root/manage.sh" "$@"
 SCRIPT
 
   install -Dm644 /dev/stdin "$pkgdir/usr/share/licenses/$pkgname/LICENSE" <<'LICENSE'
