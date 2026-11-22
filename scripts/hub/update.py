@@ -297,14 +297,49 @@ def apply_plan(plan: Plan) -> list[str]:
     if text == original:
         return [f"{plan.package}: no PKGBUILD line changed (edits {plan.edits})"]
     pkgbuild.write_text(text, encoding="utf-8")
-    return regenerate_srcinfo(plan.directory)
+    return regenerate_srcinfo(plan.directory, plan.edits, old_commit=plan.old)
 
 
-def regenerate_srcinfo(directory: Path) -> list[str]:
+def patch_srcinfo(text: str, edits: list[tuple[str, str]], old_commit: str = "") -> str:
+    """Apply the same edits to an existing .SRCINFO without running makepkg.
+
+    The hosted Ubuntu runner has no makepkg, and these edits only ever touch
+    three things that .SRCINFO repeats verbatim: ``pkgver``, ``pkgrel`` and the
+    ``#commit=`` fragment of the git source.  Anything else (a new dependency,
+    a renamed source) changes more than this function knows about, which is why
+    ``regenerate_srcinfo`` prefers makepkg whenever it is installed and
+    ``tests/test_hub_update.py`` checks that both paths agree.
+    """
+    for field_name, new_value in edits:
+        if field_name in ("pkgver", "pkgrel"):
+            text, count = re.subn(rf"(?m)^(\t{field_name} = ).*$",
+                                  lambda m, v=new_value: m.group(1) + v, text, count=1)
+            if count != 1:
+                raise ValueError(f".SRCINFO has no {field_name} line to update")
+        elif field_name == "_commit":
+            # `source = name::git+URL#commit=<old>`; the old value is whatever the
+            # PKGBUILD pinned before (HEAD for a floating pin).
+            pattern = rf"(?m)^(\tsource = .*#commit=){re.escape(old_commit)}$"
+            text, count = re.subn(pattern, lambda m, v=new_value: m.group(1) + v, text)
+            if count == 0:
+                raise ValueError(f".SRCINFO has no source pinned to #commit={old_commit}")
+    return text
+
+
+def regenerate_srcinfo(directory: Path, edits: list[tuple[str, str]] | None = None,
+                       old_commit: str = "") -> list[str]:
     if not (directory / ".SRCINFO").is_file():
         return []
     if not _have("makepkg"):
-        return [f"{directory.name}: makepkg not available to regenerate .SRCINFO"]
+        if edits is None:
+            return [f"{directory.name}: makepkg not available to regenerate .SRCINFO"]
+        try:
+            patched = patch_srcinfo((directory / ".SRCINFO").read_text(encoding="utf-8"),
+                                    edits, old_commit)
+        except ValueError as error:
+            return [f"{directory.name}: {error}"]
+        (directory / ".SRCINFO").write_text(patched, encoding="utf-8")
+        return []
     result = subprocess.run(
         ["makepkg", "--printsrcinfo"],
         cwd=directory, capture_output=True, text=True,

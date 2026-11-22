@@ -10,6 +10,8 @@ Two layers:
 from __future__ import annotations
 
 import importlib.util
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -99,6 +101,76 @@ class PlanApplyTests(unittest.TestCase):
         self.assertEqual("2.7", _MODULE._pkgrel_next("2.6"))
         self.assertIsNone(_MODULE._pkgrel_next("1.2.3"))
         self.assertIsNone(_MODULE._pkgrel_next("1a"))
+
+
+_SRCINFO = (
+    "pkgbase = zbonsai\n"
+    "\tpkgdesc = demo\n"
+    "\tpkgver = 0.1.0\n"
+    "\tpkgrel = 1\n"
+    "\tsource = zbonsai::git+https://github.com/C-Fuego/Rezig#commit=HEAD\n"
+    "\tsha256sums = SKIP\n"
+    "\n"
+    "pkgname = zbonsai\n"
+)
+
+
+class SrcinfoPatchTests(unittest.TestCase):
+    def test_commit_pin_and_pkgrel(self):
+        patched = _MODULE.patch_srcinfo(
+            _SRCINFO, [("_commit", "0eb8604"), ("pkgrel", "2")], old_commit="HEAD")
+        self.assertIn("\tpkgrel = 2\n", patched)
+        self.assertIn("#commit=0eb8604\n", patched)
+        self.assertNotIn("#commit=HEAD", patched)
+        self.assertIn("\tpkgver = 0.1.0\n", patched)
+
+    def test_pkgver_and_pkgrel_for_a_tag_bump(self):
+        patched = _MODULE.patch_srcinfo(_SRCINFO, [("pkgver", "0.2.0"), ("pkgrel", "1")])
+        self.assertIn("\tpkgver = 0.2.0\n", patched)
+
+    def test_missing_pin_is_an_error_not_a_silent_noop(self):
+        # A pin that is not in .SRCINFO means the file drifted from the PKGBUILD;
+        # writing an unchanged file would publish a PR whose metadata disagrees.
+        with self.assertRaises(ValueError):
+            _MODULE.patch_srcinfo(_SRCINFO, [("_commit", "abc")], old_commit="deadbeef")
+
+    def test_missing_field_is_an_error(self):
+        with self.assertRaises(ValueError):
+            _MODULE.patch_srcinfo("pkgbase = x\n", [("pkgrel", "2")])
+
+    @unittest.skipUnless(shutil.which("makepkg") and os.geteuid() != 0,
+                         "needs makepkg and a non-root user")
+    def test_patch_agrees_with_makepkg_for_every_declared_package(self):
+        # The runner patches .SRCINFO because it has no makepkg; the maintainer's
+        # machine regenerates it. Both must produce the same bytes or a PR from
+        # CI would differ from one made locally.
+        checked = 0
+        for toml in sorted((ROOT / "packages").glob("*/update.toml")):
+            package = toml.parent.name
+            pkgbuild = (toml.parent / "PKGBUILD").read_text(encoding="utf-8")
+            srcinfo = (toml.parent / ".SRCINFO").read_text(encoding="utf-8")
+            commit = _MODULE.decl.read_pkgbuild_variable(toml.parent, "_commit")
+            if commit is None:
+                edits, old = [("pkgrel", "9")], ""
+            else:
+                edits, old = [("_commit", "0" * 40), ("pkgrel", "9")], commit
+            work = Path(tempfile.mkdtemp())
+            try:
+                target = work / package
+                shutil.copytree(toml.parent, target)
+                text = pkgbuild
+                for name, value in edits:
+                    text = re.sub(rf"(?m)^{name}=.*$", f"{name}={value}", text, count=1)
+                (target / "PKGBUILD").write_text(text, encoding="utf-8")
+                errors = _MODULE.regenerate_srcinfo(target)  # makepkg path
+                self.assertEqual([], errors, package)
+                expected = (target / ".SRCINFO").read_text(encoding="utf-8")
+                self.assertEqual(
+                    expected, _MODULE.patch_srcinfo(srcinfo, edits, old), package)
+                checked += 1
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
+        self.assertGreater(checked, 0)
 
 
 if __name__ == "__main__":

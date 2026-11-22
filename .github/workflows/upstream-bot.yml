@@ -43,11 +43,15 @@ jobs:
       - name: Probe upstream and plan updates
         id: plan
         shell: bash
+        env:
+          # Through the environment, never interpolated into the script: a
+          # dispatch input is attacker-shaped text as far as the shell cares.
+          ONLY_PACKAGE: ${{ inputs.package }}
         run: |
           set -Eeuo pipefail
           args=()
-          if [[ -n "${{ inputs.package }}" ]]; then
-            args+=(--package "${{ inputs.package }}")
+          if [[ -n "$ONLY_PACKAGE" ]]; then
+            args+=(--package "$ONLY_PACKAGE")
           fi
           set +e
           python3 scripts/hub/update.py "${args[@]}" --json "$RUNNER_TEMP/plan.json" \
@@ -76,6 +80,11 @@ jobs:
           export MAKEFLAGS=""
           git config user.name 'fuego-repo bot'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # The checkout step runs with persist-credentials: false, so nothing
+          # in the clone can authenticate a push. Hand the job token to the
+          # remote for this step only; it does not outlive the runner.
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
           # Packages that have an update, one per line.
           mapfile -t packages < <(
