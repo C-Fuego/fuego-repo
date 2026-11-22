@@ -19,11 +19,16 @@ depends=('pacman')
 # and pinning a hash here would need a bump every time the key is rotated.
 # makepkg accepts SKIP for a file whose integrity is established downstream
 # (the repository's own signature chain).
-source=("fuego-repo-key.asc::https://ignacio.dpdns.org/x86_64-v3/fuego-repo-key.asc")
+#
+# The local name deliberately does NOT end in .asc: makepkg treats an .asc
+# source as a detached signature and looks for the file it signs (it fails with
+# "SOURCE FILE NOT FOUND"). The downloaded bytes are the armored public key, so
+# it is stored as .pub and installed under its proper keyrings name below.
+source=("fuego-repo-key.pub::https://ignacio.dpdns.org/x86_64-v3/fuego-repo-key.asc")
 sha256sums=('SKIP')
 
 package() {
-  install -Dm644 "$srcdir/fuego-repo-key.asc" \
+  install -Dm644 "$srcdir/fuego-repo-key.pub" \
     "$pkgdir/usr/share/pacman/keyrings/fuego-repo.asc"
 
   # trusted: keys pacman may use to validate this repository's database.

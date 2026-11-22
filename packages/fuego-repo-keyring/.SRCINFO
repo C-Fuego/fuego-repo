@@ -6,7 +6,7 @@ pkgbase = fuego-repo-keyring
 	arch = any
 	license = custom
 	depends = pacman
-	source = fuego-repo-key.asc::https://ignacio.dpdns.org/x86_64-v3/fuego-repo-key.asc
+	source = fuego-repo-key.pub::https://ignacio.dpdns.org/x86_64-v3/fuego-repo-key.asc
 	sha256sums = SKIP
 
 pkgname = fuego-repo-keyring
