@@ -1,14 +1,14 @@
 pkgbase = zclock
 	pkgdesc = tty-clock clone written in Zig
 	pkgver = 1.0.0
-	pkgrel = 1
+	pkgrel = 2
 	url = https://github.com/C-Fuego/Rezig
 	arch = x86_64
 	license = MIT
 	makedepends = zig
 	options = !debug
 	options = !strip
-	source = zclock::git+https://github.com/C-Fuego/Rezig#commit=HEAD
+	source = zclock::git+https://github.com/C-Fuego/Rezig#commit=54f24d2a35434b4e77e4b6bcef97378e4c4d9d24
 	sha256sums = SKIP
 
 pkgname = zclock
