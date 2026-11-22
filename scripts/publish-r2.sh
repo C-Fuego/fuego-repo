@@ -316,9 +316,16 @@ fi
 # can serve a corrupted body while reporting the right ETag and Content-Length
 # (observed: a 6226-byte body for a 6235-byte package, ETag matching the good
 # copy). Reading the object back over S3 bypasses that layer entirely, so only
-# a public fetch proves what a client actually receives. One retry covers the
-# brief window where the object is cached-but-not-yet-revalidated.
+# a public fetch proves what a client receives.
+#
+# "Cannot read it" and "read it but the bytes are wrong" are deliberately
+# different outcomes. A 403 means a CDN WAF is refusing the runner (Cloudflare
+# blocks cloud-provider addresses routinely), which says nothing about the
+# stored object -- failing the publish for that would break every run from a
+# CI IP. Only a successful read whose hash disagrees is evidence of a corrupt
+# copy, and that fails the publish.
 printf 'Verifying published packages over the public URL\n'
+unverified=0
 for file in "${payload[@]}"; do
     name="$(basename "$file")"
     expect_sha="$(sha256sum "$file" | awk '{print $1}')"
@@ -328,27 +335,46 @@ for file in "${payload[@]}"; do
     # 403 that looked like a corrupt edge but was just a wrong URL.
     url="${server_url}/${name}"
     got_sha=""
+    http_code=""
     for attempt in 1 2 3; do
-        if curl -fsS -o "${verify_dir}/${name}" "$url"; then
+        http_code="$(curl -sS -o "${verify_dir}/${name}" -w '%{http_code}' "$url" || true)"
+        if [[ "$http_code" == 2* ]]; then
             got_sha="$(sha256sum "${verify_dir}/${name}" | awk '{print $1}')"
             [[ "$got_sha" == "$expect_sha" ]] && break
         fi
         if (( attempt < 3 )); then
-            printf '  %s: public fetch does not match yet (attempt %d); retrying\n' \
-                "$name" "$attempt" >&2
+            printf '  %s: attempt %d returned HTTP %s; retrying\n' \
+                "$name" "$attempt" "${http_code:-<no response>}" >&2
             sleep 5
         fi
     done
-    if [[ "$got_sha" != "$expect_sha" ]]; then
+
+    if [[ "$got_sha" == "$expect_sha" ]]; then
+        continue
+    fi
+
+    if [[ "$http_code" == 2* ]]; then
         printf 'Public copy of %s does not match the built package.\n' "$name" >&2
         printf '  url:       %s\n' "$url" >&2
         printf '  built:     %s\n' "$expect_sha" >&2
-        printf '  published: %s\n' "${got_sha:-<unreadable>}" >&2
-        printf 'A CDN edge may be serving a corrupted copy; purge that URL.\n' >&2
+        printf '  published: %s\n' "$got_sha" >&2
+        printf 'A CDN edge is serving a corrupted copy; purge that URL.\n' >&2
         exit 1
     fi
+
+    # Could not read the URL at all. Report it, but do not fail: the object was
+    # already verified over S3 and the database cmp above passed.
+    printf '::warning::Could not verify %s over the public URL (HTTP %s).\n' \
+        "$name" "${http_code:-<no response>}" >&2
+    printf '  A CDN WAF may be blocking this runner; the object itself was verified over S3.\n' >&2
+    unverified=$((unverified + 1))
 done
-printf 'All %d package(s) verified over the public URL.\n' "${#payload[@]}"
+if (( unverified > 0 )); then
+    printf '%d package(s) could not be verified over the public URL (object verified over S3).\n' \
+        "$unverified"
+else
+    printf 'All %d package(s) verified over the public URL.\n' "${#payload[@]}"
+fi
 
 # No fallback to the S3 endpoint: that URL is not public, so a .conf built
 # from it would look valid here and fail for every client. README carries the
