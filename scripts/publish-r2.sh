@@ -268,7 +268,7 @@ repo_db_tar="${repository_name}.db"
 [[ -f "$repo_db_tar" ]] || repo_db_tar="${repository_name}.db.tar.zst"
 [[ -f "$repo_db_tar" ]] || repo_db_tar="${repository_name}.db.tar.gz"
 if [[ -f "$repo_db_tar" ]] && tar -xOf "$repo_db_tar" --wildcards '*/desc' 2>/dev/null |
-    awk -F ' = ' '$1 == "%FILENAME%" { print $2 }' | sort -u > "$referenced"; then :; fi
+    awk '$0 == "%FILENAME%" { getline; print }' | sort -u > "$referenced"; then :; fi
 if [[ ! -s "$referenced" ]]; then
     # Never prune from an empty list: a database that could not be read would
     # otherwise delete every package in the bucket.

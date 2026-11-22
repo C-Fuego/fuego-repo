@@ -194,6 +194,30 @@ rm -f \
 
 if (( ${#repository_packages[@]} > 0 )); then
     repo-add --include-sigs "$database" "${repository_packages[@]}"
+
+    # repo-add --include-sigs embeds each package's signature in the database's
+    # %PGPSIG% field but leaves no detached <pkg>.pkg.tar.zst.sig on disk.
+    # pacman, when it finds %PGPSIG% for a package and is asked to verify it,
+    # still fetches <pkg>.pkg.tar.zst.sig next to the package; a 404 there is
+    # read as a file and rejects the whole transaction with "Exceeded the
+    # maximum allowed file size (16384)" even though the package is valid.
+    # Materialize the embedded signature back into a real detached .sig so the
+    # package is installable without rebuilding anything.
+    if [[ -n "$signing_key" ]]; then
+        # Each desc record is "%KEY%\n<value>\n\n": the key sits on its own
+        # line and the value on the next, so the parser reads the key line then
+        # the following line -- there is no " = " separator here.
+        while IFS= read -r member; do
+            filename="$(bsdtar -xOf "$database" --include "$member" 2>/dev/null |
+                awk '$0 == "%FILENAME%" { getline; print; exit }')"
+            [[ -n "$filename" ]] || continue
+            bsdtar -xOf "$database" --include "$member" 2>/dev/null |
+                awk '$0 == "%PGPSIG%" { getline; print; exit }' |
+                base64 -d > "${repository_dir}/${filename}.sig" 2>/dev/null ||
+                printf 'warning: could not materialize the %%PGPSIG%% signature for %s\n' \
+                    "$filename" >&2
+        done < <(bsdtar -tf "$database" 2>/dev/null | grep '/desc$' || true)
+    fi
 else
     for archive in \
         "${repository_dir}/${repository_name}.db.tar.zst" \
