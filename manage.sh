@@ -783,7 +783,7 @@ translate_action_conclusion() {
 
 translate_workflow_name() {
     case "$1" in
-        'Build private Arch repository')
+        'Build Arch repository')
             printf '构建私人 Arch 仓库'
             ;;
         'Remove packages from private repository')

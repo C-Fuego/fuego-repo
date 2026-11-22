@@ -1,4 +1,4 @@
-name: Build private Arch repository
+name: Build Arch repository
 
 on:
   workflow_dispatch:
