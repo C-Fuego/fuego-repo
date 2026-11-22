@@ -126,6 +126,7 @@ is_metadata() {
 }
 
 mapfile -d '' payload < <(find . -maxdepth 1 -type f -name '*.pkg.tar.zst' -print0 | sort -z)
+
 mapfile -d '' metadata < <(
     for name in "${metadata_names[@]}"; do
         [[ -f "$name" ]] && printf '%s\0' "$name"
@@ -206,7 +207,35 @@ if (( ${#pending[@]} > 0 )); then
             --cache-control 'public, max-age=31536000, immutable' \
             --metadata "sha256=${remote_sha256[$name]}" \
             "$file" "s3://${bucket}/${prefix}/${name}"
+        # The detached signature is small and immutable alongside its package.
+        local_sig="${file}.sig"
+        if [[ -f "$local_sig" ]]; then
+            aws_s3 cp --only-show-errors --no-progress \
+                --cache-control 'public, max-age=31536000, immutable' \
+                "$local_sig" "s3://${bucket}/${prefix}/${name}.sig"
+        fi
     done
+fi
+
+# An unchanged package is never re-uploaded, but its signature may still be
+# missing from the bucket (it was added to this script after packages were
+# already published, or a previous run failed mid-way). Re-upload the sig for
+# every payload file that has one on disk: a few KiB each, and without it the
+# package is in the database yet pacman refuses to install it. Tracked
+# separately so an unchanged run still reports itself as unchanged.
+sig_only=0
+for file in "${payload[@]}"; do
+    name="$(basename "$file")"
+    local_sig="${file}.sig"
+    [[ -f "$local_sig" ]] || continue
+    grep -qxF -- "$file" <(printf '%s\n' "${pending[@]}") && continue
+    aws_s3 cp --only-show-errors --no-progress \
+        --cache-control 'public, max-age=31536000, immutable' \
+        "$local_sig" "s3://${bucket}/${prefix}/${name}.sig"
+    sig_only=$(( sig_only + 1 ))
+done
+if (( sig_only > 0 )); then
+    printf 'Uploaded %d signature(s) for unchanged package(s)\n' "$sig_only"
 fi
 
 # Database last: a client must never see a database naming a file that is not
@@ -218,9 +247,10 @@ for file in "${metadata[@]}"; do
         "$file" "s3://${bucket}/${prefix}/${file}"
 done
 
-# Delete package files the new database no longer references. Derived from the
-# database rather than from a timestamp: files that are present but unlisted
-# are unreachable by pacman and only cost storage.
+# Delete package files the new database no longer references, together with
+# their detached signatures. Derived from the database rather than from a
+# timestamp: files that are present but unlisted are unreachable by pacman and
+# only cost storage.
 printf 'Pruning packages no longer referenced\n'
 referenced="$(mktemp)"
 trap 'rm -f "$referenced"' EXIT
@@ -253,6 +283,7 @@ for name in "${!remote_size[@]}"; do
     if ! grep -qxF -- "$name" "$referenced"; then
         printf 'Deleting unreferenced package: %s\n' "$name"
         aws_s3 rm --only-show-errors "s3://${bucket}/${prefix}/${name}"
+        aws_s3 rm --only-show-errors "s3://${bucket}/${prefix}/${name}.sig" || true
         deleted=$(( deleted + 1 ))
     fi
 done
