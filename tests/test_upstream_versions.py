@@ -20,7 +20,7 @@ validate_new_versions = _MODULE.validate_new_versions
 class UpstreamVersionTests(unittest.TestCase):
     def test_all_requested_packages_have_sources(self):
         definitions, baselines = load_definitions(ROOT)
-        expected = {'quirc', 'mpeghdec', 'ffmpeg-full', 'svt-jpeg-xs-git', 'fuego-repo-keyring',
+        expected = {'quirc', 'mpeghdec', 'ffmpeg-full', 'svt-jpeg-xs-git',
                     'lensfun-master', 'whisper-cpp'}
         self.assertEqual(expected, set(definitions))
         self.assertEqual(expected, set(baselines))
@@ -60,7 +60,7 @@ class UpstreamVersionTests(unittest.TestCase):
             ], check=True, capture_output=True, text=True, env=env)
             config = tomllib.loads((tmp / 'sources.toml').read_text(encoding='utf-8'))
             oldver = json.loads((tmp / 'oldver.json').read_text(encoding='utf-8'))
-            expected = {'quirc', 'mpeghdec', 'ffmpeg-full', 'svt-jpeg-xs-git', 'fuego-repo-keyring',
+            expected = {'quirc', 'mpeghdec', 'ffmpeg-full', 'svt-jpeg-xs-git',
                         'lensfun-master', 'whisper-cpp'}
             self.assertIn('__config__', config)
             self.assertNotIn('keyfile', config['__config__'])
