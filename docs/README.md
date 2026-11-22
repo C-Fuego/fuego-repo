@@ -2,15 +2,10 @@
 
 This index separates task-oriented tutorials from implementation references and operational runbooks. Historical reviews and research are preserved in [archive](archive/README.md); they may describe earlier states and are not current instructions.
 
-## Start here
-
-- [Add and inspect a package](tutorials/add-package.md): import an AUR or reviewed local PKGBUILD, validate it, and inspect the generated declaration.
-- [Package management interface](tutorials/package-management.md): use the fzf menu and the main `manage.sh` actions.
-
 ## Tutorials
 
-- [Add and inspect a package](tutorials/add-package.md)
-- [Package management interface](tutorials/package-management.md)
+- Import an AUR or reviewed local PKGBUILD, validate it, and inspect its declaration. [Add and inspect a package](tutorials/add-package.md)
+- Use the fzf menu to manage packages and builds. [Package management interface](tutorials/package-management.md)
 
 ## Reference
 

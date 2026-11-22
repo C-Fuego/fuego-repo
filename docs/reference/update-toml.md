@@ -21,7 +21,7 @@ Both fields must be TOML strings. Values are trimmed. Strategy is independent of
 | `git-tag` | `git` | `tag_pattern`, `pkgver_from`, `on_update` | Chooses the newest version-sorted matching tag, converts it to `pkgver`, and sets `pkgrel = 1` when the converted version differs. |
 | `git-tag-pin` | `git` | `tag_pattern`, `on_update` | Chooses the newest matching tag and pins `_commit` to its commit; increments `pkgrel`, leaving `pkgver` unchanged. Intended for packages versioned independently within a shared upstream repository. |
 | `git-commit` | `git` | `on_update` | Pins `_commit` to upstream HEAD and increments `pkgrel` when changed. |
-| `git-vcs` | `git` | `on_update` | Compares upstream HEAD with the revision in the built `pkgver`; increments `pkgrel` when a new revision is available. `pkgver()` derives the new version during build. |
+| `git-vcs` | `git` | `on_update` | Compares the last dot-separated suffix in PKGBUILD’s `pkgver` (at least seven lowercase hex characters) with the first seven characters of upstream HEAD. A mismatch or missing suffix causes a `pkgrel` increment. `pkgver()` derives the new version during build. |
 
 Git URL is a required nonempty string in the declaration parser. `manage add` additionally rejects whitespace, leading `-`, and a `::` prefix before the scheme. `git-tag-pin` and `git-commit` require `_commit` in PKGBUILD when imported via the CLI; `git-vcs` requires `pkgver()`.
 
@@ -38,7 +38,7 @@ Git URL is a required nonempty string in the declaration parser. `manage add` ad
 | `date_version` | Collect digits; when there are at least 8, format the first eight as `YYYY.MM.DD`; otherwise retain the original tag. |
 | `regex_extract:<pattern>` | Search the tag; return capture group 1 if present, otherwise the full match. No match is an update error. |
 
-An empty value is normalized to `strip_v`. Unknown function names fail; the configured value cannot execute code.
+An empty value is normalized to `strip_v`. The declaration reader accepts these Git option fields as strings for every Git track. Their effects are limited to the tracks above. For `git-tag`, `manage add` validates the rule name and requires a compilable, nonempty `regex_extract` pattern. For a handwritten declaration the rule is evaluated when the updater finds a matching tag. An unknown function causes an update error.
 
 `on_update` applies to all Git tracks and defaults to `pull-request` when missing or empty:
 
@@ -47,6 +47,8 @@ An empty value is normalized to `strip_v`. Unknown function names fail; the conf
 - `none`: excluded from automated update actions.
 
 The Git updater only reads eligible Git declarations. Probe or declaration errors return failure, not “up to date.” Exit status is `0` when current, `10` when an update is available, and `2` when a check/apply fails. It only writes PKGBUILD and `.SRCINFO` with `--apply`; the scheduled workflow performs this in a branch and proposes a PR.
+
+Recognized fields are strings with surrounding whitespace stripped. Unknown top-level keys are ignored. The manifest checker also verifies that a `workflow` path is Git-tracked (or exists on disk when Git tracking information is unavailable).
 
 ## Build strategy semantics
 

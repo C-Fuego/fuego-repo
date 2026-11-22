@@ -25,8 +25,8 @@ cd ~/pkgbuild-source
 - 手动触发全部或指定 AUR 脚本同步。
 - 多选软件包并指定编译并行数。
 - 在 TUI 中直接检查选定包的 `PKGBUILD`、`.SRCINFO` 和本地源文件。
-- 同步本地 `emoeem` pacman 仓库。
-- 从 `emoeem` 选择并安装软件包。
+- 同步本地 `fuego-repo` pacman 仓库。
+- 从 `fuego-repo` 选择并安装软件包。
 - 查看最近的 GitHub Actions 状态。
 - 拉取最新 `main`。
 - 打开或关闭添加、删除操作的自动推送。
@@ -38,8 +38,7 @@ cd ~/pkgbuild-source
 
 主菜单标题会显示当前分支、包数量、工作区是否干净以及自动推送状态。
 
-默认情况下，添加和删除会立即提交并推送。以下方式启动时默认只创建本地
-提交：
+旧版 Git 添加和删除操作默认会提交并推送。以下方式启动时，这些操作默认只创建本地提交。新版添加入口只导入本地目录。用法见 [导入软件包](add-package.md)。
 
 ```bash
 ./manage.sh --no-push
@@ -49,7 +48,7 @@ cd ~/pkgbuild-source
 
 ```bash
 PKGBUILD_GITHUB_REPOSITORY=C-Fuego/fuego-repo
-PKGBUILD_PACMAN_REPOSITORY=emoeem
+PKGBUILD_PACMAN_REPOSITORY=fuego-repo
 PKGBUILD_DEFAULT_MAKE_JOBS=2
 ```
 
