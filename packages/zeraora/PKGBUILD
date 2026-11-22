@@ -1,7 +1,7 @@
 # Maintainer: C-Fuego
 pkgname=zeraora
 pkgver=0.3.0
-pkgrel=1
+pkgrel=2
 pkgdesc="Print pokemon sprites in your terminal"
 arch=('x86_64')
 options=('!debug' '!strip')
@@ -9,7 +9,7 @@ url="https://github.com/C-Fuego/Rezig"
 license=('GPL-3.0-only')
 depends=()
 makedepends=('zig')
-_commit=HEAD
+_commit=54f24d2a35434b4e77e4b6bcef97378e4c4d9d24
 # zeraora 是 Rezig 仓库根下的独立子项目（不是 <pkg>/<pkg>/src 结构）
 source=("$pkgname::git+https://github.com/C-Fuego/Rezig#commit=$_commit")
 sha256sums=('SKIP')
