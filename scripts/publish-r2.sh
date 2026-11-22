@@ -40,16 +40,24 @@
 
 set -Eeuo pipefail
 
+missing=()
 for variable in REPOSITORY_DIR REPOSITORY_NAME R2_BUCKET R2_ENDPOINT \
     R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_PUBLIC_URL; do
-    if [[ -z "${!variable:-}" ]]; then
-        printf 'Missing required environment variable: %s\n' "$variable" >&2
-        if [[ "$variable" == R2_PUBLIC_URL ]]; then
-            printf 'It is the URL clients use; without it the database .conf points nowhere.\n' >&2
-        fi
-        exit 2
-    fi
+    [[ -n "${!variable:-}" ]] || missing+=("$variable")
 done
+if (( ${#missing[@]} > 0 )); then
+    # Report every missing name at once (a step-level env that forgot one input
+    # otherwise costs a full run per missing variable) and annotate the job so
+    # it shows up in the Actions summary instead of only deep in the log.
+    printf '::error::publish-r2.sh is missing required environment: %s\n' "${missing[*]}" >&2
+    for variable in "${missing[@]}"; do
+        printf 'Missing required environment variable: %s\n' "$variable" >&2
+    done
+    if [[ " ${missing[*]} " == *" R2_PUBLIC_URL "* ]]; then
+        printf 'R2_PUBLIC_URL is the URL clients use; without it the database .conf points nowhere.\n' >&2
+    fi
+    exit 2
+fi
 
 readonly repository_dir="${REPOSITORY_DIR}"
 readonly repository_name="${REPOSITORY_NAME}"

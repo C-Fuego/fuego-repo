@@ -1025,6 +1025,10 @@ jobs:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          # Each step gets its own env: R2_PUBLIC_URL is validated earlier but
+          # is written into the .conf by publish-r2.sh, so it must be exported
+          # here too -- the script refuses to publish without it (exit 2).
+          R2_PUBLIC_URL: ${{ vars.R2_PUBLIC_URL }}
           REPOSITORY_DIR: published/x86_64
         run: |
           set -Eeuo pipefail
