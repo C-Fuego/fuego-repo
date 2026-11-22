@@ -245,7 +245,7 @@ for package_file in "$published"/*.pkg.tar.zst; do
     fi
 
     if [[ -n "$missing_elf" ]]; then
-        # Build strategy (Phase 3): a binary-repack/data package ships
+        # Build strategy (Phase 3): a binary/data package ships
         # upstream's prebuilt payload, so no local rebuild can re-link it.
         # Those become UPSTREAM notes (reported, never dispatched, never
         # urgent); source/vcs keep the STALE path and the cooldown bypass.

@@ -16,8 +16,8 @@
 | 标签 | 含义 | 后续动作 |
 |---|---|---|
 | `STALE` | 可本地重建修复的断裂（source/vcs 包） | 进 stale.txt → dispatch 重建（`bump_pkgrel=true`） |
-| `UPSTREAM` | repack/data 包的断裂（Phase 3） | 只报告：等上游资产，不 dispatch、不算 urgent；issue 不因此关闭 |
-| `NOTE` | pkgrel-only 漂移 / repack/data 的版本漂移 | 只报告，不触发 |
+| `UPSTREAM` | binary/data 包的断裂（Phase 3） | 只报告：等上游资产，不 dispatch、不算 urgent；issue 不因此关闭 |
+| `NOTE` | pkgrel-only 漂移 / binary/data 的版本漂移 | 只报告，不触发 |
 
 ## 重建节流
 
@@ -26,7 +26,7 @@
 - **失败冷却**：24h 内失败过的包 DEFER，避免无效重试循环。
 - **查询窗口**：dispatch 前拉最近 100 个 build.yml run 且按时间窗过滤（窗口 = max(冷却, 24h) + 1h），保证"刚成功过"不被高频 run 挤出判定。
 
-## repack/data 包的处理原则
+## binary/data 包的处理原则
 
 payload 由上游提供的包，本地重建不会重链任何字节：
 

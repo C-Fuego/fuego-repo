@@ -8,6 +8,17 @@ repo_root="$(
 )"
 readonly repo_root
 
+# The package CLI is local-only and does not need fzf or a Git worktree.
+case "${1:-}" in
+    add | packages)
+        exec python3 "${repo_root}/scripts/hub/manage.py" "$@"
+        ;;
+esac
+if [[ "${1:-}" == --no-push && ( "${2:-}" == add || "${2:-}" == packages ) ]]; then
+    shift
+    exec python3 "${repo_root}/scripts/hub/manage.py" "$@"
+fi
+
 github_repository="${PKGBUILD_GITHUB_REPOSITORY:-C-Fuego/fuego-repo}"
 pacman_repository="${PKGBUILD_PACMAN_REPOSITORY:-fuego-repo}"
 default_make_jobs="${PKGBUILD_DEFAULT_MAKE_JOBS:-2}"
@@ -42,6 +53,10 @@ usage() {
 
 给了动作代号就**跳过菜单直接执行那一个动作**，例如：
 
+  $(basename "$0") add <AUR 包名>                       # 仅导入本地，不提交或推送
+  $(basename "$0") add <pkgbase> --from <PKGBUILD 目录> # 从可信本地目录导入
+  $(basename "$0") packages list                       # 软件包与更新策略总览
+  $(basename "$0") packages show <pkgbase>             # 查看单个软件包
   $(basename "$0") dashboard    # 仓库状态总览
   $(basename "$0") doctor       # 运行环境自检
   $(basename "$0") build        # 在 GitHub 上构建软件包（里面还会用 fzf 选包）
@@ -59,8 +74,10 @@ action_code=''
 # 所以三边不可能对不上（以前只有菜单那一处 case，脚本没法点名执行）。
 readonly -a manage_actions=(
     'dashboard:show_dashboard:仓库状态总览'
-    'add-aur:add_aur_package:添加 AUR 软件包'
-    'add-custom:add_custom_package:从自定义 Git 添加软件包'
+    'add:add_package_local:添加软件包（本地导入）'
+    'packages:show_packages_overview:软件包与更新策略总览'
+    'add-aur:add_aur_package:添加 AUR 软件包（旧 Git 流程）'
+    'add-custom:add_custom_package:从自定义 Git 添加软件包（旧 Git 流程）'
     'remove:remove_package:从仓库删除软件包'
     'sync-aur:sync_aur_sources:在 GitHub 上同步 AUR 源'
     'build:build_packages:在 GitHub 上构建软件包'
@@ -231,13 +248,10 @@ aur_package_records() {
         printf '%s\t%s-%s\t%s\n' \
             "$package_name" "$pkgver" "$pkgrel" "$pkgdesc"
     done < <(
-        find "${repo_root}/packages" \
-            -mindepth 2 \
-            -maxdepth 2 \
-            -type f \
-            -name .aur-url \
-            -printf '%h\n' |
-            sort -u
+        python3 "${repo_root}/scripts/hub/manage.py" packages list --track aur --no-header |
+            while IFS=$'\t' read -r name _; do
+                printf '%s/packages/%s\n' "$repo_root" "$name"
+            done
     )
 }
 
@@ -348,6 +362,32 @@ pull_main() {
         return 1
     fi
     git -C "$repo_root" pull --ff-only origin main
+}
+
+add_package_local() {
+    local package_name source mode
+    mode="$(select_one '导入来源' 'AUR' '本地 PKGBUILD 目录')" || return
+    package_name="$(prompt_value '包名 / pkgbase')" || return
+    [[ -n "$package_name" ]] || return
+    if [[ "$mode" == AUR ]]; then
+        python3 "${repo_root}/scripts/hub/manage.py" add "$package_name"
+    else
+        source="$(prompt_value '可信本地 PKGBUILD 目录')" || return
+        [[ -n "$source" ]] || return
+        python3 "${repo_root}/scripts/hub/manage.py" add "$package_name" --from "$source"
+    fi
+}
+
+show_packages_overview() {
+    local selected records
+    records="$(python3 "${repo_root}/scripts/hub/manage.py" packages list --no-header)" || return
+    if [[ -z "$records" ]]; then
+        printf '没有托管的软件包。\n'
+        return
+    fi
+    selected="$(fzf "${fzf_options[@]}" --prompt='软件包> ' \
+        --header='包名 | 版本 | 更新轨道 | 构建策略' <<< "$records")" || return
+    python3 "${repo_root}/scripts/hub/manage.py" packages show "${selected%%$'\t'*}"
 }
 
 add_aur_package() {

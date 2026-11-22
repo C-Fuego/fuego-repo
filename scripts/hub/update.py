@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Declarative upstream updates, driven by a per-package update.toml.
 
-A package opts in by carrying a `packages/<name>/update.toml`:
+Packages with a git track opt in through `packages/<name>/update.toml`.
+The CLI plans and applies updates for `on_update = "pull-request"`. Git
+tracks with `issue` or `none` and packages owned by AUR, dedicated workflows
+or manual maintenance are outside the PR updater's scope.
 
     track = "git-tag"          # git-tag | git-tag-pin | git-commit | git-vcs
     git   = "https://github.com/user/repo"
@@ -50,9 +53,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from hub import declaration as decl  # noqa: E402
 from hub import pins  # noqa: E402
 
-UPDATE_FILENAME = "update.toml"
-TRACKS = ("git-tag", "git-tag-pin", "git-commit", "git-vcs")
-ON_UPDATE = ("pull-request", "issue", "none")
+UPDATE_FILENAME = decl.UPDATE_FILENAME
+TRACKS = decl.GIT_TRACKS
+ON_UPDATE = decl.ON_UPDATE
 
 #: Exit code meaning "there is at least one update to carry".
 HAS_UPDATE = 10
@@ -85,9 +88,12 @@ class Plan:
     directory: Path = field(default_factory=lambda: ROOT)
 
 
-def read_specs(root: Path, only: set[str] | None = None) -> tuple[list[UpdateSpec], list[str]]:
+def read_specs(root: Path, only: set[str] | None = None, *,
+               action: str | None = None) -> tuple[list[UpdateSpec], list[str]]:
+    """Read git update specs, optionally selecting a single on_update action."""
     specs: list[UpdateSpec] = []
     errors: list[str] = []
+    present: set[str] = set()
     for directory in decl.package_dirs(root):
         path = directory / UPDATE_FILENAME
         if not path.is_file():
@@ -95,31 +101,37 @@ def read_specs(root: Path, only: set[str] | None = None) -> tuple[list[UpdateSpe
         name = directory.name
         if only is not None and name not in only:
             continue
+        present.add(name)
         try:
             data = tomllib.loads(path.read_text(encoding="utf-8"))
-        except (OSError, tomllib.TOMLDecodeError) as exc:
+        except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
             errors.append(f"{name}: cannot read {UPDATE_FILENAME}: {exc}")
             continue
         track = str(data.get("track", "")).strip()
-        git = str(data.get("git", "")).strip()
-        if track not in TRACKS:
-            errors.append(f"{name}: track must be one of {', '.join(TRACKS)} (got {track!r})")
+        if track not in decl.UPDATE_TRACKS:
+            errors.append(f"{name}: track must be one of {', '.join(decl.UPDATE_TRACKS)} (got {track!r})")
             continue
-        if not git:
+        if track not in TRACKS:
+            continue
+        git = data.get("git", "")
+        if not isinstance(git, str) or not git.strip():
             errors.append(f"{name}: update.toml has no git URL")
             continue
-        on_update = str(data.get("on_update", "pull-request")).strip() or "pull-request"
+        on_update = data.get("on_update", "pull-request")
+        if isinstance(on_update, str):
+            on_update = on_update.strip() or "pull-request"
         if on_update not in ON_UPDATE:
             errors.append(f"{name}: on_update must be one of {', '.join(ON_UPDATE)} (got {on_update!r})")
             continue
+        if action is not None and on_update != action:
+            continue
         specs.append(UpdateSpec(
-            package=name, directory=directory, track=track, git=git,
+            package=name, directory=directory, track=track, git=git.strip(),
             tag_pattern=str(data.get("tag_pattern", "")).strip(),
             pkgver_from=str(data.get("pkgver_from", "strip_v")).strip() or "strip_v",
             on_update=on_update,
         ))
     if only is not None:
-        present = {spec.package for spec in specs}
         for missing in sorted(only - present):
             errors.append(f"{missing}: no {UPDATE_FILENAME}")
     return specs, errors
@@ -320,7 +332,8 @@ def render_plan(plans: list[Plan], errors: list[str]) -> str:
             lines.append(f"- {plan.package}: {plan.error}")
         lines.append("")
     if not updates and not failed and not errors:
-        lines.append("Every declared package is current.")
+        lines.append("Every eligible package is current." if plans
+                     else "No packages are eligible for pull-request updates.")
         lines.append("")
     if errors:
         lines.append(f"## {len(errors)} declaration error(s)")
@@ -424,7 +437,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     only = set(args.package) if args.package else None
-    specs, errors = read_specs(args.root, only)
+    specs, errors = read_specs(args.root, only, action="pull-request")
     plans = [plan_package(spec) for spec in specs]
     report = render_plan(plans, errors)
 

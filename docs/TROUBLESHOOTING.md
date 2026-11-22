@@ -14,7 +14,7 @@
 不是 bug：源码树 pkgrel 落后于已发布版本（多半是 write-back 没跑或 AUR sync 拉回）。先让源码树追上（重跑 sync 或手动对齐），再重新构建发布。
 
 ### `SKIP no-op publish` 
-同版本产物已在仓库里：发布闸门把它挪出本批。属设计行为；频繁出现说明某包在无意义重建——查它的 `.build-strategy` 是否正确。
+同版本产物已在仓库里：发布闸门把它挪出本批。属设计行为；频繁出现说明某包在无意义重建——用 `./manage.sh packages show <pkgbase>` 核对 `update.toml` 中的 `strategy`。
 
 ## 构建类
 
@@ -42,7 +42,7 @@ CDN 边不同步（mirror 404 而源站 200）。构建脚本已带 `retry_trans
 检测器没跑完（数据库未同步、容器网络失败）。这是刻意的 fail loudly——修环境后重跑 `gh workflow run dependency-drift.yml`，不要把失败解释成"无漂移"。
 
 ### 某包被反复 dispatch
-按顺序查：① 它的 `.build-strategy` 是否正确（repack/data 不该被版本漂移 dispatch）；② 是否 soname urgent（冷却豁免是设计行为，等上游资产期间会持续报告 UPSTREAM）；③ `stale.txt` 内容与 `check-dependency-drift.sh` 的 NOTE 行。
+按顺序查：① 用 `./manage.sh packages show <pkgbase>` 核对生效的 `strategy`（`binary` / `data` 不该被版本漂移 dispatch）；② 是否 soname urgent（冷却豁免是设计行为，等上游资产期间会持续报告 UPSTREAM）；③ `stale.txt` 内容与 `check-dependency-drift.sh` 的 NOTE 行。
 
 ### dispatch 502 后没重建
 脚本自带重试 + "已接受确认"（`rebuild_is_queued` 轮询）。三轮全失败才红——此时看 workflow 日志确认没有 queued job，手动 `gh workflow run build.yml -f packages=<pkg>`。
@@ -54,7 +54,7 @@ CDN 边不同步（mirror 404 而源站 200）。构建脚本已带 `retry_trans
 
 ### 更新器红在 checksum/依赖对账
 dsh 的 `build()` 对账失败说明上游资产的 depend 集合变了：按错误信息改本地 `depends=()`（PKGBUILD + `makepkg --printsrcinfo` 同步 `.SRCINFO`），这是唯一需要人工的语义判断点。
-rule-sets/仓库管理源的 checksum stale 由 `auto-repair` hand-off 给所属更新工作流，不在本地改哈希。
+rule-sets 等仓库管理源的校验和失效时，`auto-repair` 会按 `update.toml` 的 `workflow` 字段派发支持手动触发的更新工作流，不在本地改哈希。先用 `./manage.sh packages show <pkgbase>` 核对更新方式和工作流路径；没有可派发工作流时需人工检查。
 
 ### `[upstream]` issue 长期挂着
 nvchecker 发现上游新版本但发布未跟进。按 [DEPENDENCY-MANAGEMENT.md](DEPENDENCY-MANAGEMENT.md) 的 vendored 依赖升级流程处理；closed 即代表已追平。

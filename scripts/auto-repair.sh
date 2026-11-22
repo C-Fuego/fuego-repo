@@ -8,9 +8,9 @@
 # Every attempt is appended to an audit log so it is always possible to see
 # what was changed, why, by which rule, and whether it was kept or reverted.
 #
-# A source whose checksums this repository pins itself (no .aur-url) is never
-# re-pinned here. Such a failure is handed to the update workflow named for the
-# package in config/package-updates.txt: that workflow validates the upstream
+# A source whose checksums this repository pins itself is never re-pinned here.
+# Such a failure is handed to the update workflow named in the package's
+# update.toml (or the legacy registry): that workflow validates the upstream
 # content, commits the new hashes and rebuilds the package, exactly as it
 # already does on its own schedule. The repair therefore only decides *when*
 # the re-pin happens; it changes no file in this workspace, and the report
@@ -126,26 +126,49 @@ if [[ ! -f "$package_dir/PKGBUILD" ]]; then
     exit 2
 fi
 
-# config/package-updates.txt maps each package to the workflow that owns its
-# upstream content ("<package> workflow <path>"). A repair uses that entry to
-# hand a stale repository-managed pin over instead of rewriting it itself.
-package_refresh_workflow() {
+# Resolve the owner of checksum refreshes. Once update.toml exists, legacy
+# files cannot override its track, including when the TOML is unreadable.
+package_checksum_updater() {
+    local manifest="$package_dir/update.toml"
     local registry="$root/config/package-updates.txt" name kind path
-    [[ -f "$registry" ]] || return 1
-    while read -r name kind path _; do
-        if [[ -z "$name" || "$name" == \#* ]]; then
-            continue
-        fi
-        if [[ "$name" != "$package_name" || "$kind" != "workflow" ]]; then
-            continue
-        fi
-        # A path that is not a workflow in this repository is not something to
-        # dispatch: refuse rather than guess.
-        [[ "$path" =~ ^\.github/workflows/[A-Za-z0-9._-]+\.ya?ml$ ]] || return 1
-        printf '%s\n' "$path"
-        return 0
-    done <"$registry"
-    return 1
+    if [[ -e "$manifest" || -L "$manifest" ]]; then
+        python3 - "$manifest" <<'PY'
+import sys
+import tomllib
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    if not path.is_file():
+        raise OSError("expected a regular file")
+    with path.open("rb") as handle:
+        data = tomllib.load(handle)
+except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+    sys.exit(f"auto-repair: cannot read {path}: {exc}")
+track = data.get("track")
+track = track.strip() if isinstance(track, str) else ""
+if track == "aur":
+    print("aur")
+elif track == "workflow" and isinstance(data.get("workflow"), str):
+    path = data["workflow"]
+    # Command substitution strips trailing newlines. Reject them before the
+    # shell validates the complete workflow path.
+    if "\n" not in path and "\r" not in path and "\0" not in path:
+        print(f"workflow {path}")
+PY
+        return
+    fi
+    if [[ -f "$package_dir/.aur-url" ]]; then
+        printf 'aur\n'
+    elif [[ -f "$registry" ]]; then
+        # The legacy registry records `<package> workflow <path>`.
+        while read -r name kind path _; do
+            if [[ "$name" == "$package_name" && "$kind" == "workflow" ]]; then
+                printf 'workflow %s\n' "$path"
+                break
+            fi
+        done <"$registry"
+    fi
 }
 
 # True while the newest run of the owning workflow is still queued or running.
@@ -284,6 +307,8 @@ case "$category" in
     SourceError)
         case "$rule_id" in
             checksum-mismatch)
+                checksum_updater="$(package_checksum_updater)" || checksum_updater=""
+                refresh_workflow="${checksum_updater#workflow }"
                 # A level 0 run must not touch a file, and the staleness check
                 # removes the stale entry as part of establishing the verdict,
                 # so it only runs when the run may write at all.
@@ -291,11 +316,12 @@ case "$category" in
                     strategy="clear_stale_source_cache"
                     strategy_level=1
                     strategy_reason="the declared checksum did not match the cached copy, so the stale cache entry was removed; the next build re-fetches the source instead of hashing stale bytes"
-                elif [[ -f "$package_dir/.aur-url" ]]; then
+                elif [[ "$checksum_updater" == "aur" ]]; then
                     strategy="refresh_checksum"
                     strategy_level=2
                     strategy_reason="an AUR-tracked source changed upstream; refresh the declared checksums"
-                elif refresh_workflow="$(package_refresh_workflow)"; then
+                elif [[ "$checksum_updater" == "workflow "* &&
+                        "$refresh_workflow" =~ ^\.github/workflows/[A-Za-z0-9._-]+\.ya?ml$ ]]; then
                     # This package pins upstream content that the repository
                     # validates itself. Refreshing the checksums here would mean
                     # accepting new upstream content on the strength of nothing

@@ -87,7 +87,7 @@ current_version() { # <name>; prints the repository's <version>-<pkgrel>
 
 # Compare one dependency against what the published build recorded.
 #   0 = the versions disagree (stale), 1 = in sync or pkgrel-only, 2 = not resolvable here.
-# A binary-repack/data package suppresses the STALE outcome: its payload is
+# A binary/data package suppresses the STALE outcome: its payload is
 # upstream's prebuilt artifact, so a local rebuild cannot re-link anything and
 # the drift is downgraded to a NOTE (the soname detector reports the same
 # class as UPSTREAM). The caller sets suppress_stale/strategy per package.
@@ -156,7 +156,7 @@ for pkg in "$repo_dir"/*.pkg.tar.zst; do
     [[ -f "$src" ]] || { rm -f "$buildinfo"; continue; }
     packages=$((packages + 1))
 
-    # Build strategy (Phase 3): binary-repack/data packages cannot be repaired
+    # Build strategy (Phase 3): binary/data packages cannot be repaired
     # by a local rebuild, so their version drift becomes a NOTE below. An
     # unreadable or unknown strategy keeps the fail-safe STALE behaviour.
     suppress_stale=0

@@ -1,3 +1,4 @@
+strategy = "source"
 # Rezig tags mark a release of the whole repository, so pkgver stays this
 # package's own version; the tag only decides which commit gets built.
 track = "git-tag-pin"

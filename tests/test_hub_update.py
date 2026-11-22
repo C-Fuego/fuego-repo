@@ -10,6 +10,7 @@ Two layers:
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -18,6 +19,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 _SPEC = importlib.util.spec_from_file_location("hub_update", ROOT / "scripts/hub/update.py")
@@ -95,6 +97,43 @@ class PlanApplyTests(unittest.TestCase):
         self.assertEqual([], errors)
         self.assertEqual(1, len(specs))
         self.assertEqual("identity", specs[0].pkgver_from)
+
+    def test_cli_routes_only_pull_request_git_tracks(self):
+        for name, manifest in {
+            "aur": 'track = "aur"\n',
+            "manual": 'track = "manual"\n',
+            "workflow": 'track = "workflow"\n',
+            "legacy": 'track = "git-tag"\ngit = "https://example/x"\n',
+            "pr": 'track = "git-commit"\ngit = "https://example/x"\non_update = "pull-request"\n',
+            "issue": 'track = "git-commit"\ngit = "https://example/x"\non_update = "issue"\n',
+            "none": 'track = "git-vcs"\ngit = "https://example/x"\non_update = "none"\n',
+        }.items():
+            self._make_package(name, f"pkgname={name}\npkgver=1.0\npkgrel=1\n", "", manifest)
+
+        plan_file = self.tmp / "plan.json"
+        args = ["--root", str(self.tmp), "--json", str(plan_file), "--apply"]
+
+        def available(spec):
+            return _MODULE.Plan(spec.package, spec.track, available=True)
+
+        with patch.object(_MODULE, "plan_package", side_effect=available) as probe, \
+                patch.object(_MODULE, "apply_plan", return_value=[]) as apply, \
+                patch("builtins.print"):
+            self.assertEqual(_MODULE.HAS_UPDATE, _MODULE.main(args))
+            self.assertEqual(["legacy", "pr"], [c.args[0].package for c in probe.call_args_list])
+            self.assertEqual(["legacy", "pr"], [c.args[0].package for c in apply.call_args_list])
+            data = json.loads(plan_file.read_text(encoding="utf-8"))
+            self.assertEqual(["legacy", "pr"], [p["package"] for p in data["plans"]])
+            self.assertEqual([], data["errors"])
+
+            # Dispatching the PR bot for an existing package on another track
+            # or action is a clean no-op, even with --apply.
+            probe.reset_mock()
+            apply.reset_mock()
+            for name in ("aur", "manual", "workflow", "issue", "none"):
+                self.assertEqual(0, _MODULE.main([*args, "--package", name]), name)
+            probe.assert_not_called()
+            apply.assert_not_called()
 
     def test_pkgrel_next_matches_policy_shape(self):
         self.assertEqual("2", _MODULE._pkgrel_next("1"))
@@ -212,11 +251,13 @@ class SrcinfoPatchTests(unittest.TestCase):
         # machine regenerates it. Both must produce the same bytes or a PR from
         # CI would differ from one made locally.
         checked = 0
-        for toml in sorted((ROOT / "packages").glob("*/update.toml")):
-            package = toml.parent.name
-            pkgbuild = (toml.parent / "PKGBUILD").read_text(encoding="utf-8")
-            srcinfo = (toml.parent / ".SRCINFO").read_text(encoding="utf-8")
-            commit = _MODULE.decl.read_pkgbuild_variable(toml.parent, "_commit")
+        specs, errors = _MODULE.read_specs(ROOT)
+        self.assertEqual([], errors)
+        for spec in specs:
+            package = spec.package
+            pkgbuild = (spec.directory / "PKGBUILD").read_text(encoding="utf-8")
+            srcinfo = (spec.directory / ".SRCINFO").read_text(encoding="utf-8")
+            commit = _MODULE.decl.read_pkgbuild_variable(spec.directory, "_commit")
             if commit is None:
                 edits, old = [("pkgrel", "9")], ""
             else:
@@ -224,7 +265,7 @@ class SrcinfoPatchTests(unittest.TestCase):
             work = Path(tempfile.mkdtemp())
             try:
                 target = work / package
-                shutil.copytree(toml.parent, target)
+                shutil.copytree(spec.directory, target)
                 text = pkgbuild
                 for name, value in edits:
                     text = re.sub(rf"(?m)^{name}=.*$", f"{name}={value}", text, count=1)

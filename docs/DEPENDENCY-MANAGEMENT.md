@@ -2,13 +2,38 @@
 
 三类输入：**包从哪更新**（update source）、**上游有什么新版本**（nvchecker）、**依赖关系怎么传播**（`.SRCINFO` + `.rebuild-on`）。
 
-## 更新来源（每包恰好一个，`check-package-manifests.py` 强制）
+## 逐包声明：`update.toml`
 
-| 通道 | 声明方式 | 覆盖包 |
+在 `packages/<pkgbase>/update.toml` 中，用顶层字符串 `track` 声明唯一的更新方式，
+用 `strategy` 独立声明构建策略：`source`、`vcs`、`binary` 或 `data`（见
+[构建策略](BUILD-STRATEGY.md)）。例如：
+
+```toml
+track = "aur"
+strategy = "source"
+url = "https://aur.archlinux.org/quirc.git"
+commit = "0123456789abcdef0123456789abcdef01234567" # 示例；同步会记录真实提交
+```
+
+| `track` | 额外字段 | 行为 |
 |---|---|---|
-| AUR 镜像 | 包目录 `.aur-url` + `.aur-commit`（40 位 pin） | ffmpeg-full, linuxqq-wayland-fix-git, mpeghdec, quirc, scx-scheds-git, svt-jpeg-xs-git, vapoursynth-plugin-mlrt-ncnn-runtime, xclip-git |
-| 专属更新工作流 | `config/package-updates.txt` 的 `workflow <path>` 行 | dsh-desktop-linux, filee-bin, sing-box-ebpf, sing-box-rule-sets |
-| 手动 | `config/package-updates.txt` 的 `manual <reason>` 行（有意的过期声明） | sing-box-panel, dracpanel, trae-cn-appimage |
+| `aur` | `url` 为 AUR Git URL，`commit` 为 40 位小写十六进制提交哈希 | 同步 AUR 打包文件 |
+| `workflow` | `workflow` 为仓库内已被 Git 跟踪的工作流路径，例如 `.github/workflows/filee-update.yml` | 由该工作流更新 |
+| `manual` | `reason` 为非空字符串 | 不自动更新 |
+| `git-tag` | `git` 为上游 Git URL；可选 `tag_pattern` 正则、`pkgver_from`（默认 `strip_v`） | 从匹配的 tag 更新 `pkgver` |
+| `git-tag-pin` | `git`；可选 `tag_pattern` | 将 PKGBUILD 的 `_commit` 更新到匹配 tag 的提交 |
+| `git-commit` | `git` | 将 PKGBUILD 的 `_commit` 更新到上游 HEAD |
+| `git-vcs` | `git`；PKGBUILD 须有 `pkgver()` | 上游 HEAD 变化时提升 `pkgrel`，由 makepkg 推导 `pkgver` |
+
+Git tracks 的 `on_update` 可为 `pull-request`（默认）、`issue` 或 `none`；只有
+`pull-request` 会进入开 PR 的更新流程。版本监视和外部重建触发仍分别由
+`.nvchecker.toml` 和 `.rebuild-on` 声明。
+
+`update.toml` 存在时以它为准，格式有误不会回退到旧的更新来源。没有 TOML 的旧包
+仍可读取 `.aur-url` / `.aur-commit`、`config/package-updates.txt` 和 `.build-strategy`；
+旧版 Git track 的 TOML 未写 `strategy` 时仍可读取 `.build-strategy`。新包不需要这些旧文件。
+可用 `./manage.sh packages show <pkgbase>` 查看生效声明，或用
+`python3 scripts/check-package-manifests.py` 校验。
 
 AUR 同步（`sync-aur-packages.sh`）是 per-package 故障隔离的：单包失败不拖累整批；本地定制写进 `scripts/overlays/<pkg>.sh`（sync 每次重放，必须幂等），不要直接改包目录文件——AUR 版本会覆盖它。
 

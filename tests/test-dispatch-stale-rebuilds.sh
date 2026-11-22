@@ -20,7 +20,7 @@ printf 'pkgname=demo-ancient\n' > "$tmp/packages/demo-ancient/PKGBUILD"
 mkdir -p "$tmp/packages/demo-repack" "$tmp/packages/demo-data"
 printf 'pkgname=demo-repack\n' > "$tmp/packages/demo-repack/PKGBUILD"
 printf 'pkgname=demo-data\n' > "$tmp/packages/demo-data/PKGBUILD"
-printf 'binary-repack\n# repacked upstream payload\n' > "$tmp/packages/demo-repack/.build-strategy"
+printf 'track = "manual"\nstrategy = "binary"\n' > "$tmp/packages/demo-repack/update.toml"
 printf 'data\n' > "$tmp/packages/demo-data/.build-strategy"
 export MOCK_LOG="$tmp/state/gh.log"
 export GITHUB_REPOSITORY=emoeem/pkgbuild
@@ -73,8 +73,8 @@ grep -q 'DEFER demo-failed: rebuild failed within the last 24h' "$GITHUB_STEP_SU
 grep -q 'SKIP demo-recent: rebuilt successfully 1h ago and no soname break is reported; cooling down for 24h' \
   "$GITHUB_STEP_SUMMARY"
 grep -q 'IGNORE demo-gone: no such package directory' "$GITHUB_STEP_SUMMARY"
-# Phase 3：binary-repack/data 被防御性 IGNORE，且不出现在 dispatch 的 packages= 里。
-grep -q 'IGNORE demo-repack: build strategy binary-repack cannot be repaired by a local rebuild' "$GITHUB_STEP_SUMMARY"
+# Phase 3：binary/data 被防御性 IGNORE，且不出现在 dispatch 的 packages= 里。
+grep -q 'IGNORE demo-repack: build strategy binary cannot be repaired by a local rebuild' "$GITHUB_STEP_SUMMARY"
 grep -q 'IGNORE demo-data: build strategy data cannot be repaired by a local rebuild' "$GITHUB_STEP_SUMMARY"
 # 窗口外（3 天前）的成功 run 不满足 age < cooldown：必须照常 dispatch。
 grep -q 'Dispatching stale packages: demo-stale,demo-ancient' "$GITHUB_STEP_SUMMARY" ||
@@ -82,10 +82,10 @@ grep -q 'Dispatching stale packages: demo-stale,demo-ancient' "$GITHUB_STEP_SUMM
   { printf 'FAIL: an out-of-window success run still blocked the dispatch\n' >&2; grep 'Dispatching\|SKIP demo-ancient' "$GITHUB_STEP_SUMMARY" >&2; exit 1; }
 grep -q 'Dispatching stale packages: demo-stale' "$GITHUB_STEP_SUMMARY"
 grep -q 'gh workflow run build.yml .* -f packages=demo-stale' "$MOCK_LOG"
-# dispatch 出的 packages= 列表必须不含 repack/data：它们既不单独 dispatch，
+# dispatch 出的 packages= 列表必须不含 binary/data：它们既不单独 dispatch，
 # 也不能被拼进任何一次批量 dispatch。
 if grep -E 'gh workflow run build.yml' "$MOCK_LOG" | grep -Eq 'demo-repack|demo-data'; then
-  printf 'FAIL: a repack/data package reached the dispatched build list\n' >&2
+  printf 'FAIL: a binary/data package reached the dispatched build list\n' >&2
   grep -E 'gh workflow run build.yml' "$MOCK_LOG" >&2
   exit 1
 fi

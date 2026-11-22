@@ -1,0 +1,4 @@
+track = "aur"
+strategy = "vcs"
+url = "https://aur.archlinux.org/luciole-git.git"
+commit = "788df9a7951927413fb3ca24f030b3a4e6274c67"

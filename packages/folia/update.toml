@@ -1,3 +1,4 @@
+strategy = "source"
 track = "git-tag"
 git = "https://github.com/Techuouo520/Folia-rust"
 tag_pattern = '^v\d+\.\d+\.\d+$'

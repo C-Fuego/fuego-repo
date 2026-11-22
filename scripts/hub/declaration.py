@@ -1,22 +1,11 @@
 """One declaration per package: who the upstream is, and how it is tracked.
 
-The repository describes a package with five different files, each written for
-a different consumer:
+``update.toml`` is the authoritative source for the update track and build
+strategy. Packages without it may still use ``.aur-url`` and ``.aur-commit`` or
+``config/package-updates.txt`` for the update source, and ``.build-strategy``
+for the strategy. Version trackers and rebuild triggers are still read from
+``.nvchecker.toml`` and ``.rebuild-on`` respectively.
 
-  .aur-url + .aur-commit        scripts/sync-aur-packages.sh mirrors an AUR repo
-  .nvchecker.toml               scripts/check-upstream-versions.py runs nvchecker
-  config/package-updates.txt    the manifest gate and scripts/auto-repair.sh
-  .build-strategy               the drift detectors (see lib/build-strategy.sh)
-  .rebuild-on                   the soname / package rebuild triggers
-
-That split is not a problem in itself -- each file reads naturally at its use
-site.  The problem is that no single place can answer "what is this package
-tracking?", so a new consumer (a pin watcher, an update planner) has to learn
-all five formats, and the formats are only kept consistent by whichever check
-happens to run.
-
-`.hub.declaration` is that single place.  It reads the five files and produces
-one PackageDeclaration per package directory, without changing any of them.
 Roles that are easy to conflate are kept apart:
 
   update        which process refreshes PKGBUILD pkgver (at most one)
@@ -35,10 +24,11 @@ from __future__ import annotations
 
 import re
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 PACKAGE_ROOT = "packages"
+UPDATE_FILENAME = "update.toml"
 AUR_URL_FILENAME = ".aur-url"
 AUR_COMMIT_FILENAME = ".aur-commit"
 NVCHECKER_FILENAME = ".nvchecker.toml"
@@ -46,14 +36,20 @@ BUILD_STRATEGY_FILENAME = ".build-strategy"
 REBUILD_ON_FILENAME = ".rebuild-on"
 REGISTRY_PATH = Path("config/package-updates.txt")
 
-BUILD_STRATEGIES = ("source", "binary-repack", "vcs", "data")
+BUILD_STRATEGIES = ("source", "vcs", "binary", "data")
+BUILD_STRATEGY_ALIASES = {"binary-repack": "binary"}
 REGISTRY_KINDS = ("manual", "workflow")
+GIT_TRACKS = ("git-tag", "git-tag-pin", "git-commit", "git-vcs")
+UPDATE_TRACKS = ("aur", *REGISTRY_KINDS, *GIT_TRACKS)
+ON_UPDATE = ("pull-request", "issue", "none")
 REBUILD_ON_KINDS = ("soname", "package")
 
 AUR_URL = re.compile(r"^https://aur\.archlinux\.org/(?P<name>[A-Za-z0-9@._+-]+)\.git$")
 GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 SONAME = re.compile(r"^[A-Za-z0-9+._-]+\.so(\.[0-9]+)*$")
-PKGVER_FUNCTION = re.compile(r"^pkgver\(\)\s*\{", re.MULTILINE)
+PKGVER_FUNCTION = re.compile(
+    r"^[ \t]*(?:function[ \t]+)?pkgver[ \t]*\([ \t]*\)\s*\{", re.MULTILINE
+)
 VERSION_CONSTRAINT = re.compile(r"[<>=].*$")
 
 #: Reserved nvchecker tables that are this repository's own extension, not
@@ -93,7 +89,18 @@ class ManualUpdate:
     reason: str
 
 
-UpdateSource = AurMirror | WorkflowUpdate | ManualUpdate
+@dataclass(frozen=True)
+class GitUpdate:
+    """The package is refreshed by the declarative git updater."""
+
+    track: str
+    git: str
+    tag_pattern: str = ""
+    pkgver_from: str = "strip_v"
+    on_update: str = "pull-request"
+
+
+UpdateSource = AurMirror | WorkflowUpdate | ManualUpdate | GitUpdate
 
 
 @dataclass(frozen=True)
@@ -138,6 +145,10 @@ class PackageDeclaration:
     errors: tuple[str, ...] = ()
 
     @property
+    def strategy(self) -> str:
+        return self.build_strategy
+
+    @property
     def package_version_tracker(self) -> Tracker | None:
         """The tracker whose baseline is this package's own version, if any."""
         for tracker in self.trackers:
@@ -155,7 +166,10 @@ class PackageDeclaration:
         it says nobody refreshes the package, not that a specific revision is
         deliberately held.
         """
-        return isinstance(self.update, AurMirror)
+        return isinstance(self.update, AurMirror) or (
+            isinstance(self.update, GitUpdate)
+            and self.update.track in ("git-tag-pin", "git-commit")
+        )
 
 
 # --------------------------------------------------------------------------
@@ -188,6 +202,99 @@ def read_aur(url_path: Path, commit_path: Path) -> tuple[AurMirror | None, list[
     return AurMirror(url=url, package=match.group("name"), commit=commit), errors
 
 
+def has_update_file(package_dir: Path) -> bool:
+    path = package_dir / UPDATE_FILENAME
+    return path.exists() or path.is_symlink()
+
+
+def normalize_build_strategy(value: object) -> str | None:
+    """Return the canonical name for a supported strategy value."""
+    if not isinstance(value, str):
+        return None
+    value = BUILD_STRATEGY_ALIASES.get(value, value)
+    return value if value in BUILD_STRATEGIES else None
+
+
+def read_update(path: Path) -> tuple[UpdateSource | None, str | None, list[str]]:
+    """Read a package update.toml, including its required build strategy."""
+    try:
+        with path.open("rb") as stream:
+            data = tomllib.load(stream)
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+        return None, None, [f"{path.name}: cannot read: {exc}"]
+
+    errors: list[str] = []
+
+    def field(key: str, default: str = "", *, required: bool = False) -> str:
+        value = data.get(key, default)
+        if not isinstance(value, str):
+            errors.append(f"{path.name}: {key} must be a string")
+            return ""
+        value = value.strip()
+        if required and not value:
+            errors.append(f"{path.name}: {key} must be a non-empty string")
+        return value
+
+    track = field("track")
+    value = field("strategy")
+    strategy = normalize_build_strategy(value)
+    if strategy is None:
+        errors.append(
+            f"{path.name}: strategy must be one of {', '.join(BUILD_STRATEGIES)} "
+            f"(got {value!r})"
+        )
+
+    update = None
+    if track == "aur":
+        url = field("url", required=True)
+        commit = field("commit", required=True)
+        match = AUR_URL.fullmatch(url)
+        if url and match is None:
+            errors.append(f"{path.name}: url {url!r} is not an https://aur.archlinux.org/<name>.git URL")
+        valid_commit = bool(GIT_COMMIT.fullmatch(commit))
+        if commit and not valid_commit:
+            errors.append(f"{path.name}: commit must be a 40-character git commit hash")
+        if match and valid_commit:
+            update = AurMirror(url, match.group("name"), commit)
+    elif track == "manual":
+        reason = field("reason", required=True)
+        if reason:
+            update = ManualUpdate(reason)
+    elif track == "workflow":
+        workflow = field("workflow", required=True)
+        if workflow:
+            candidate = Path(workflow)
+            if candidate.is_absolute() or ".." in candidate.parts or candidate == Path("."):
+                errors.append(f"{path.name}: workflow must be a repository-relative file path")
+            else:
+                update = WorkflowUpdate(candidate.as_posix())
+    elif track in GIT_TRACKS:
+        git = field("git", required=True)
+        tag_pattern = field("tag_pattern")
+        pkgver_from = field("pkgver_from", "strip_v") or "strip_v"
+        on_update = field("on_update", "pull-request") or "pull-request"
+        if on_update not in ON_UPDATE:
+            errors.append(f"{path.name}: on_update must be one of {', '.join(ON_UPDATE)}")
+        if tag_pattern:
+            try:
+                re.compile(tag_pattern)
+            except re.error as exc:
+                errors.append(f"{path.name}: invalid tag_pattern: {exc}")
+        if git:
+            update = GitUpdate(track, git, tag_pattern, pkgver_from, on_update)
+    else:
+        errors.append(f"{path.name}: track must be one of {', '.join(UPDATE_TRACKS)} (got {track!r})")
+    return update, strategy, errors
+
+
+def package_build_strategy(package_dir: Path) -> tuple[str | None, list[str]]:
+    """Read the effective build strategy without reading unrelated metadata."""
+    if has_update_file(package_dir):
+        _, strategy, errors = read_update(package_dir / UPDATE_FILENAME)
+        return strategy, errors
+    return read_build_strategy(package_dir / BUILD_STRATEGY_FILENAME)
+
+
 def read_build_strategy(path: Path) -> tuple[str | None, list[str]]:
     """First non-blank, non-comment line; the format lib/build-strategy.sh reads."""
     if not path.is_file():
@@ -195,26 +302,29 @@ def read_build_strategy(path: Path) -> tuple[str | None, list[str]]:
     for line in _read_text(path).splitlines():
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
-            if stripped not in BUILD_STRATEGIES:
+            strategy = normalize_build_strategy(stripped)
+            if strategy is None:
                 return None, [
                     f"{BUILD_STRATEGY_FILENAME} declares {stripped!r}, "
                     f"expected one of: {', '.join(BUILD_STRATEGIES)}"
                 ]
-            return stripped, []
+            return strategy, []
     return None, [f"{BUILD_STRATEGY_FILENAME} is empty"]
 
 
-def read_registry(path: Path) -> tuple[dict[str, tuple[str, str]], list[str]]:
+def read_registry(path: Path, *, superseded: set[str] | None = None) -> tuple[dict[str, tuple[str, str]], list[str]]:
     """config/package-updates.txt as {package: (kind, detail)}."""
     entries: dict[str, tuple[str, str]] = {}
     errors: list[str] = []
     if not path.is_file():
-        return entries, [f"{path} is missing"]
+        return entries, errors
     for lineno, raw in enumerate(_read_text(path).splitlines(), start=1):
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         parts = line.split(None, 2)
+        if superseded and parts[0] in superseded:
+            continue
         if len(parts) < 3:
             errors.append(f"{path}:{lineno}: expected `<package> <kind> <detail>`")
             continue
@@ -243,7 +353,11 @@ def pkgver_from_pkgbuild(path: Path) -> str | None:
 
 
 def pkgrel_from_pkgbuild(path: Path) -> str | None:
-    match = re.search(r"(?m)^pkgrel=['\"]?([^'\"\s#]+)", _read_text(path))
+    try:
+        text = _read_text(path)
+    except OSError:
+        return None
+    match = re.search(r"(?m)^pkgrel=['\"]?([^'\"\s#]+)", text)
     return match.group(1) if match else None
 
 
@@ -407,27 +521,21 @@ def read_package(package_dir: Path, registry: dict[str, tuple[str, str]]) -> Pac
     name = package_dir.name
     errors: list[str] = []
 
-    aur, aur_errors = read_aur(package_dir / AUR_URL_FILENAME,
-                               package_dir / AUR_COMMIT_FILENAME)
-    errors.extend(aur_errors)
-
-    strategy, strategy_errors = read_build_strategy(package_dir / BUILD_STRATEGY_FILENAME)
-    errors.extend(strategy_errors)
-
-    registry_entry = registry.get(name)
-    registry_update = _update_from_registry(registry_entry)
-
-    # The manifest gate's rule, restated once: exactly one update source.
-    if aur is not None and registry_update is not None:
-        errors.append("declares an update source twice (.aur-url and registry entry)")
-        update = aur
-    elif aur is not None:
-        update = aur
-    elif registry_update is not None:
-        update = registry_update
+    if has_update_file(package_dir):
+        update, strategy, problems = read_update(package_dir / UPDATE_FILENAME)
+        errors.extend(problems)
     else:
-        errors.append("no update source declared")
-        update = None
+        aur, aur_errors = read_aur(package_dir / AUR_URL_FILENAME,
+                                   package_dir / AUR_COMMIT_FILENAME)
+        errors.extend(aur_errors)
+        strategy, strategy_errors = read_build_strategy(package_dir / BUILD_STRATEGY_FILENAME)
+        errors.extend(strategy_errors)
+        registry_update = _update_from_registry(registry.get(name))
+        if aur is not None and registry_update is not None:
+            errors.append("declares an update source twice (.aur-url and registry entry)")
+        update = aur or registry_update
+        if update is None:
+            errors.append("no update source declared")
 
     trackers, tracker_errors = read_trackers(package_dir)
     errors.extend(tracker_errors)
@@ -440,10 +548,11 @@ def read_package(package_dir: Path, registry: dict[str, tuple[str, str]]) -> Pac
     pkgrel = pkgrel_from_pkgbuild(pkgbuild)
 
     # The strategy makes a claim the PKGBUILD can confirm or refute.
-    if strategy == "vcs" and not PKGVER_FUNCTION.search(_read_text(pkgbuild)):
+    build_text = _read_text(pkgbuild) if pkgbuild.is_file() else ""
+    if strategy == "vcs" and not PKGVER_FUNCTION.search(build_text):
         errors.append("strategy 'vcs' requires a pkgver() function in the PKGBUILD")
-    if strategy == "binary-repack" and PKGVER_FUNCTION.search(_read_text(pkgbuild)):
-        errors.append("strategy 'binary-repack' must not use pkgver()")
+    if strategy == "binary" and PKGVER_FUNCTION.search(build_text):
+        errors.append("strategy 'binary' must not use pkgver()")
 
     # A tracker whose baseline is the package's own version has to agree with it.
     # For a git source the comparison happens on a truncated commit, not on the
@@ -490,8 +599,12 @@ def package_dirs(root: Path) -> list[Path]:
 
 def load_all(root: Path) -> tuple[list[PackageDeclaration], list[str]]:
     """Every declaration under root, plus errors that are not package-local."""
-    registry, errors = read_registry(root / REGISTRY_PATH)
-    declarations = [read_package(path, registry) for path in package_dirs(root)]
+    directories = package_dirs(root)
+    superseded = {path.name for path in directories if has_update_file(path)}
+    registry, errors = ({}, [])
+    if len(superseded) != len(directories):
+        registry, errors = read_registry(root / REGISTRY_PATH, superseded=superseded)
+    declarations = [read_package(path, registry) for path in directories]
 
     known = {declaration.name for declaration in declarations}
     for package in sorted(registry):

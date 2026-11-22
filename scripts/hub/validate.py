@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Cross-check hub declarations against the readers they are meant to replace.
 
-`.hub.declaration` reads the five package metadata files on its own.  That is
-only safe while the two readings agree: the moment they drift, one consumer
+For legacy metadata, `hub.declaration` reads the package files on its own.
+That is only safe while the two readings agree: the moment they drift, one consumer
 acts on a package the other describes differently, and the repository has
 exactly one description that no longer matches reality.
 
@@ -10,7 +10,7 @@ This script is the seam.  It asks both sides the same question and reports any
 disagreement as an error:
 
   update sources      declaration vs scripts/check-package-manifests.py
-  strategies          declaration vs packages/<name>/.build-strategy
+  strategies          declaration vs packages/<name>/.build-strategy (legacy)
   trackers + baselines  declaration vs scripts/check-upstream-versions.py
 
 Nothing is rewritten and no file is replaced.  The existing scripts keep doing
@@ -59,12 +59,25 @@ def _load_upstream_checker():
 def compare_update_sources(root: Path, declarations, mismatches):
     """Every package must get the same update source from both readers."""
     gate = _load_manifest_gate()
-    registry, registry_errors = gate.load_registry(root / decl.REGISTRY_PATH)
-    for error in registry_errors:
-        mismatches.append(f"registry: {error}")
+    superseded = {package.name for package in declarations
+                  if decl.has_update_file(package.directory)}
+    registry = {}
+    if len(superseded) != len(declarations):
+        registry, registry_errors = gate.load_registry(
+            root / decl.REGISTRY_PATH, superseded=superseded
+        )
+        mismatches.extend(f"registry: {error}" for error in registry_errors)
 
+    tracked = gate.tracked_files(root)
     for package in declarations:
         directory = package.directory
+        if package.name in superseded:
+            # This format uses the same parser on both sides. Retain the gate's
+            # checks for committed files and real workflow targets.
+            errors = []
+            gate.check_declared_update(root, directory, tracked, errors, [])
+            mismatches.extend(f"MISMATCH {error}" for error in errors)
+            continue
         aur_url = directory / decl.AUR_URL_FILENAME
         # The gate's rule, restated from its own primitives: an .aur-url file
         # is an AUR mirror, otherwise the registry decides.
@@ -87,8 +100,15 @@ def compare_update_sources(root: Path, declarations, mismatches):
 
 
 def compare_strategies(root: Path, declarations, mismatches):
-    """The declaration must read .build-strategy the way the shell library does."""
+    """Ensure declarations expose a valid strategy; legacy files are fallback only."""
     for package in declarations:
+        if decl.has_update_file(package.directory):
+            _, strategy, errors = decl.read_update(package.directory / decl.UPDATE_FILENAME)
+            if errors or strategy is None:
+                mismatches.append(
+                    f"MISMATCH {package.name}: update.toml strategy is invalid"
+                )
+            continue
         path = package.directory / decl.BUILD_STRATEGY_FILENAME
         if not path.is_file():
             mismatches.append(f"MISMATCH {package.name}: .build-strategy is missing")
@@ -99,7 +119,7 @@ def compare_strategies(root: Path, declarations, mismatches):
             if stripped and not stripped.startswith("#"):
                 value = stripped
                 break
-        if value != package.build_strategy:
+        if (decl.normalize_build_strategy(value) or value) != package.build_strategy:
             mismatches.append(
                 f"MISMATCH {package.name}: strategy is {package.build_strategy!r} "
                 f"per the declaration and {value!r} per .build-strategy"

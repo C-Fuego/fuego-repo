@@ -9,3 +9,5 @@
 !.build-strategy
 
 !.namcap-ignore
+
+!update.toml

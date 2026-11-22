@@ -1,0 +1,4 @@
+track = "aur"
+strategy = "source"
+url = "https://aur.archlinux.org/mpeghdec.git"
+commit = "54be0d87acef8de9afd5c27f917bf6405135d242"

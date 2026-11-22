@@ -1,0 +1,4 @@
+track = "aur"
+strategy = "data"
+url = "https://aur.archlinux.org/ttf-jetbrains-maple-mono-xx-xx-xx.git"
+commit = "8b3a0b3e7b2db3d632968c8359da5a08fdacafe6"

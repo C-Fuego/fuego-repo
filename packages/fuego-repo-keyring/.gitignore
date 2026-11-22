@@ -7,3 +7,5 @@ src/
 !.SRCINFO
 !.build-strategy
 !.nvchecker.toml
+
+!update.toml

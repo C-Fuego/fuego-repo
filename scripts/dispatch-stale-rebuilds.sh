@@ -141,7 +141,7 @@ while IFS= read -r pkg; do
     continue
   fi
   # Defensive second gate (Phase 3): the detectors already refuse to enqueue
-  # binary-repack/data drift, but a stale list built by any other path must
+  # binary/data drift, but a stale list built by any other path must
   # not send those packages into a rebuild that cannot change their payload.
   strategy="$(build_strategy_of "packages/${pkg}")" || strategy=""
   if build_strategy_defers_to_upstream "$strategy"; then

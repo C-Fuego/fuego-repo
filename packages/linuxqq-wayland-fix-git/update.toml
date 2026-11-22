@@ -1,0 +1,4 @@
+track = "aur"
+strategy = "vcs"
+url = "https://aur.archlinux.org/linuxqq-wayland-fix-git.git"
+commit = "6b67a00daa354edfcfce3a82ef6834a5aeb7bf30"

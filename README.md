@@ -70,10 +70,10 @@ pacman 直接从 Release 资产下载仓库数据库和软件包。AUR 同步只
 
 | 文档 | 内容 |
 | --- | --- |
-| [`docs/BUILD-STRATEGY.md`](docs/BUILD-STRATEGY.md) | 四类构建策略（source/vcs/binary-repack/data）、逐包归类与调度分流 |
+| [`docs/BUILD-STRATEGY.md`](docs/BUILD-STRATEGY.md) | 四类构建策略（source/vcs/binary/data）、逐包归类与调度分流 |
 | [`docs/PKGREL-POLICY.md`](docs/PKGREL-POLICY.md) | pkgrel 形状、全部递增入口、`.pkgrel-floor-skip` 语义、写回与闸门链 |
 | [`docs/ABI-REBUILD-POLICY.md`](docs/ABI-REBUILD-POLICY.md) | ABI watch 两类检测、STALE/UPSTREAM/NOTE 三态、冷却与豁免 |
-| [`docs/DEPENDENCY-MANAGEMENT.md`](docs/DEPENDENCY-MANAGEMENT.md) | 更新来源三通道、nvchecker（含 vendored 基线）、`.rebuild-on`、依赖对账 |
+| [`docs/DEPENDENCY-MANAGEMENT.md`](docs/DEPENDENCY-MANAGEMENT.md) | 逐包 `update.toml`、nvchecker（含 vendored 基线）、`.rebuild-on`、依赖对账 |
 | [`docs/FFmpeg-FEATURE-MATRIX.md`](docs/FFmpeg-FEATURE-MATRIX.md) | ffmpeg-full 功能矩阵、构建后验证、GPU 三态、ELF 检查 |
 | [`docs/CI-QUALITY-GATES.md`](docs/CI-QUALITY-GATES.md) | 全部门禁清单、执行原则、并发去重、失败通知 |
 | [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) | 按症状索引的排障手册（对应真实事故） |
@@ -102,9 +102,13 @@ PKGBUILD 重新构建，不会直接安装同名预编译包。
 
 ## 自动更新
 
-**Sync AUR package sources** 工作流每天 `03:17 UTC` 检查一次所有带
-`.aur-url` 的包目录。AUR 脚本发生变化时，它会更新对应的 PKGBUILD、
-`.SRCINFO`、补丁和其他源文件，提交变化到 `main`，并触发对应软件包构建。
+每个包在 `packages/<pkgbase>/update.toml` 中声明谁负责更新（`track`）和怎样构建
+（`strategy`）。新包只需这一份更新与构建策略声明；旧格式仅用于兼容。字段见
+[`docs/DEPENDENCY-MANAGEMENT.md`](docs/DEPENDENCY-MANAGEMENT.md)。
+
+**Sync AUR package sources** 工作流每天 `03:17 UTC` 检查 AUR 镜像包
+（`track = "aur"`）。AUR 有变化时，它会更新对应的 PKGBUILD、`.SRCINFO`、
+补丁和其他源文件，并记录同步的 commit，提交到 `main` 后触发对应软件包构建。
 
 **ABI watch** 工作流每两小时（`23 */2 * * *`）运行一次，是发现「已发布的包
 和当前仓库对不上」的主力：一边比对 `.BUILDINFO` 记录的依赖版本，一边把已发布
@@ -116,9 +120,9 @@ PKGBUILD 重新构建，不会直接安装同名预编译包。
 soname 扫描脚本对已发布的包再做一次深度复查，发现依赖过时就自动触发重建。
 
 **Open upstream update pull requests** 工作流每天 `03:41 UTC` 运行
-`scripts/hub/update.py`。每个带 `packages/<name>/update.toml` 的包声明它跟哪种
-上游（`git-tag` / `git-tag-pin` / `git-commit` / `git-vcs`）；上游一动，它就在一个分支上改好
-`PKGBUILD`（以及重新生成的 `.SRCINFO`）并开一个 assign 给仓库所有者的 PR，
+`scripts/hub/update.py`，处理 `track` 为 `git-tag` / `git-tag-pin` / `git-commit` /
+`git-vcs` 且 `on_update = "pull-request"`（默认）的包。检测到上游变化时，它会在分支上
+更新 `PKGBUILD` 和 `.SRCINFO`，并开一个指派给仓库所有者的 PR，
 **不自动合并**。这是声明式更新（类似 lilac 的 `update_on`），和下面基于
 `.nvchecker.toml` 的 issue 追踪互补：那个只报告漂移，这个直接给出可审阅的改动。
 
@@ -141,46 +145,28 @@ tag、资产状态与 GitHub 计算的 sha256 digest，有新版时同时更新 
 真实 SONAME 断裂才会 dispatch 定点重建；不存在"邻居更新了就把 pkgrel 抬一档"
 的联动更新。
 
-## 添加 AUR 软件包
+## 添加和查看软件包
 
-在日常使用的目录克隆 `main` 源码分支：
-
-```bash
-git clone --single-branch --branch main \
-  https://github.com/C-Fuego/fuego-repo.git \
-  ~/pkgbuild-source
-cd ~/pkgbuild-source
-```
-
-添加软件包只需要一条命令：
+在源码 checkout 根目录运行：
 
 ```bash
-./scripts/add-aur-package.sh package-name
+# 导入 AUR 软件包
+./manage.sh add package-name
+
+# 导入受信任的本地 PKGBUILD 目录，名称须与 pkgbase 一致
+./manage.sh add package-name --from /path/to/pkgbuild-dir \
+  --track manual --reason 'Maintained in this repository' --non-interactive
+
+./manage.sh packages list
+./manage.sh packages list --track aur
+./manage.sh packages show package-name
 ```
 
-脚本会自动同步 `main`、下载并校验 AUR 构建文件、提交新包并推送。
-推送后 GitHub Actions 会自动构建并更新 `repo` 分支。默认 AUR 地址是：
-
-```text
-https://aur.archlinux.org/package-name.git
-```
-
-也可以传入其他 Git PKGBUILD 仓库：
-
-```bash
-./scripts/add-aur-package.sh package-name https://example.com/package.git
-```
-
-只想生成本地提交而暂时不推送时：
-
-```bash
-./scripts/add-aur-package.sh --no-push package-name
-```
-
-完整执行流程见 `docs/add-aur-package.md`。
-
-自维护脚本只需放入 `packages/package-name/`，并确保其中同时存在
-`PKGBUILD` 和最新的 `.SRCINFO`。没有 `.aur-url` 的目录不会被自动覆盖。
+`add` 只在本地创建 `packages/<pkgbase>/` 并生成 `update.toml`；不会更新当前分支、
+暂存、提交或推送。导入后先审查 `PKGBUILD`、`.SRCINFO`、声明及辅助文件，再自行提交和推送。
+从本地目录导入时，`makepkg --printsrcinfo` 会执行 PKGBUILD 的顶层代码，只导入已审查的目录。
+`packages list` 显示包基名、版本、更新方式和构建策略；`packages show` 按包基名查看明细。
+选项和完整流程见 [`docs/add-aur-package.md`](docs/add-aur-package.md)。
 
 ## 删除软件包
 
@@ -443,7 +429,7 @@ bash tests/test-static-checks.sh
 ## 构建平台优化（P1–P5）
 
 - **P1 干净构建**：CachyOS-v3 `devtools` clean chroot；`workflow_dispatch` 可选 `legacy` / `chroot`（默认 legacy，push 始终 legacy）；基线按 builder generation / 架构 / 配置指纹缓存，每包工作副本用后删除；同批次 DAG 依赖通过只读临时仓库传递。切换前必须完成 3 次连续 chroot shadow-run 验收。
-- **P2 上游追踪**：两条互补的路。`packages/*/.nvchecker.toml` + 每日 workflow 报告漂移（开/更新 issue，不改 PKGBUILD）；`packages/*/update.toml` + `scripts/hub/update.py` 是可选的声明式更新（`git-tag` / `git-tag-pin` / `git-commit` / `git-vcs`），上游一动就改好 PKGBUILD 并开 PR，不自动合并。
+- **P2 上游追踪**：两条互补的路。`packages/*/.nvchecker.toml` + 每日 workflow 报告漂移（开/更新 issue，不改 PKGBUILD）；`update.toml` 选择 Git track 并启用 `pull-request` 时，`scripts/hub/update.py` 在上游有变化时更新 PKGBUILD 并开 PR，不自动合并。
 - **P3 失败闭环**：失败分类与根因进入去重 issue，构建恢复后关闭。
 - **P4 升级验证**：隔离 chroot 中先安装已发布的旧版本，再升级到本轮新构建的包，抓只有升级才暴露的问题（provides/conflicts 写错、SONAME 变了但版本号没变、包改名残留）；对 `linuxqq-wayland-fix-git`（VCS）和 `folia`（跟 tag）执行，缺少旧版时明确标记不可验证。
 - **P5 质量留痕**：默认执行 `check()`；仅 `.skip-check` 可显式豁免；namcap issue 按包 + 规范化警告内容去重，`.namcap-ignore` 支持逐条长期豁免。

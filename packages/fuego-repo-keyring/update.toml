@@ -1,0 +1,3 @@
+track = "manual"
+strategy = "binary"
+reason = "Ships the repository signing key; bump pkgver to the rotation date when the key changes."

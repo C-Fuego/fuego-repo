@@ -1,2 +1,0 @@
-binary-repack
-# Repacks upstream's prebuilt magpie binary verbatim; a local rebuild cannot change the payload, so drift waits for a new upstream release.

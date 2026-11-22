@@ -221,6 +221,51 @@ if grep -q 'workflow run' "$MOCK_GH_LOG"; then
     fail 'a second refresh run was dispatched while one was in flight'
 fi
 
+printf '%s\n' '8c: TOML workflow ownership overrides the legacy registry and AUR marker'
+make_fixture "$fixture"
+mkdir -p "$fixture/config"
+printf 'demo workflow .github/workflows/refresh-legacy.yml\n' >"$fixture/config/package-updates.txt"
+printf 'https://aur.archlinux.org/demo.git\n' >"$fixture/packages/demo/.aur-url"
+cat >"$fixture/packages/demo/update.toml" <<'EOF'
+track = 'workflow'
+workflow = '.github/workflows/refresh-toml.yaml' # use the package-specific owner
+EOF
+: >"$MOCK_GH_LOG"
+PATH="$work/bin:$PATH" bash "$root/scripts/auto-repair.sh" --package demo \
+    --failure "$work/checksum.json" --root "$fixture" --level 1 --apply \
+    --json --out "$work/record.json" >/dev/null || fail 'TOML workflow hand-off exited non-zero'
+grep -q '"status": "dispatched"' "$work/record.json" || fail 'TOML workflow was not dispatched'
+grep -q '^workflow run .github/workflows/refresh-toml.yaml --repo example/repo$' "$MOCK_GH_LOG" ||
+    fail 'TOML workflow hand-off did not dispatch the declared path'
+
+printf '%s\n' '8d: non-checksum tracks and invalid manifests cannot fall back to legacy updaters'
+for manifest in 'track = "manual"' 'track = "git-commit"' 'track =' \
+    $'track = "workflow"\nworkflow = "../refresh.yml"'; do
+    printf '%s\n' "$manifest" >"$fixture/packages/demo/update.toml"
+    : >"$MOCK_GH_LOG"
+    PATH="$work/bin:$PATH" bash "$root/scripts/auto-repair.sh" --package demo \
+        --failure "$work/checksum.json" --root "$fixture" --level 2 --apply \
+        --json --out "$work/record.json" >"$work/repair.stdout" 2>"$work/repair.stderr" ||
+        fail "non-checksum TOML track or invalid manifest exited non-zero: $manifest"
+    grep -q '"status": "report-only"' "$work/record.json" ||
+        fail "legacy metadata overrode TOML: $manifest"
+    [[ ! -s "$MOCK_GH_LOG" ]] || fail "non-checksum or invalid manifest invoked gh: $manifest"
+done
+
+printf '%s\n' '8e: a TOML AUR package does not need a legacy AUR marker'
+make_fixture "$fixture"
+cat >"$fixture/packages/demo/update.toml" <<'EOF'
+track = "aur"
+url = "https://aur.archlinux.org/demo.git"
+commit = "0123456789012345678901234567890123456789"
+EOF
+bash "$root/scripts/auto-repair.sh" --package demo --failure "$work/checksum.json" \
+    --root "$fixture" --level 2 --json --out "$work/record.json" >/dev/null ||
+    fail 'TOML AUR dry run exited non-zero'
+grep -q '"strategy": "refresh_checksum"' "$work/record.json" ||
+    fail 'TOML AUR track did not select checksum refresh'
+grep -q '"status": "dry-run"' "$work/record.json" || fail 'TOML AUR did not produce a dry run'
+
 printf '%s\n' '9: a stale source cache is cleared instead of re-pinning the checksums'
 # `updpkgsums` on a stale cache would bake a hash of the stale bytes into the
 # PKGBUILD: the build goes green and the repository now declares content it has

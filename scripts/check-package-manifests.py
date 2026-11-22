@@ -16,18 +16,15 @@ It is complementary to the two checkers that already exist:
 Neither can run without the builder image.  This one can, so a package that
 would fail those checks fails here first, for free.
 
-Two contracts are enforced.
+The following contracts are enforced.
 
 1. Every packages/<name> declares its update source, exactly once.
 
-   AUR-managed packages declare it with .aur-url (consumed by
-   scripts/sync-aur-packages.sh, which also rewrites .aur-commit).  Every other
-   package must have an explicit entry in config/package-updates.txt naming an
-   automated updater (`workflow <path>`) or stating that there is none
-   (`manual <reason>`).  This is the local translation of lilac's rule that a
-   package must either carry `update_on` or say `managed: false`: nothing may
-   be silently un-updatable, because an un-updatable package is only noticed
-   when its published binary goes stale.
+   packages/<name>/update.toml declares the update track and build strategy.
+   The track may mirror an AUR repository, watch git upstream, name an updater
+   workflow, or record why updates are manual. Legacy .aur-url/.aur-commit and
+   config/package-updates.txt entries still supply the track when no TOML is
+   present. Legacy .build-strategy is also read only when TOML is absent.
 
 2. The committed metadata is self-consistent.
 
@@ -69,6 +66,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from hub import declaration as decl
+
 PACKAGE_NAME = re.compile(r"^[A-Za-z0-9@._+-]+$")
 PKGREL = re.compile(r"^[0-9]+(\.[0-9]+)?$")
 AUR_URL = re.compile(r"^https://aur\.archlinux\.org/(?P<name>[A-Za-z0-9@._+-]+)\.git$")
@@ -77,8 +76,8 @@ REGISTRY_KINDS = ("manual", "workflow")
 REGISTRY_PATH = Path("config/package-updates.txt")
 REBUILD_ON_KINDS = ("soname", "package")
 SONAME = re.compile(r"^[A-Za-z0-9+._-]+\.so(\.[0-9]+)*$")
-BUILD_STRATEGIES = ("source", "binary-repack", "vcs", "data")
-PKGVER_FUNCTION = re.compile(r"^pkgver\(\)\s*\{", re.MULTILINE)
+BUILD_STRATEGIES = decl.BUILD_STRATEGIES
+PKGVER_FUNCTION = decl.PKGVER_FUNCTION
 VERSION_CONSTRAINT = re.compile(r"[<>=].*$")
 
 
@@ -106,7 +105,7 @@ def parse_srcinfo(path):
     return sections
 
 
-def load_registry(path):
+def load_registry(path, *, superseded=()):
     """Parse config/package-updates.txt into {package: (kind, detail, line)}."""
     entries = {}
     errors = []
@@ -119,6 +118,8 @@ def load_registry(path):
         if not line or line.startswith("#"):
             continue
         parts = line.split(None, 2)
+        if parts[0] in superseded:
+            continue
         if len(parts) < 3:
             errors.append(
                 f"{path}:{lineno}: expected `<package> <kind> <detail>`"
@@ -278,7 +279,8 @@ def check_build_strategy(package_dir, tracked, errors):
         if stripped and not stripped.startswith("#"):
             value = stripped
             break
-    if value not in BUILD_STRATEGIES:
+    strategy = decl.normalize_build_strategy(value)
+    if strategy is None:
         errors.append(
             f"{rel}: .build-strategy declares '{value or '<empty>'}', "
             f"expected one of: {', '.join(BUILD_STRATEGIES)}"
@@ -290,31 +292,36 @@ def check_build_strategy(package_dir, tracked, errors):
     # that hid .aur-url/.aur-commit from git for two packages in 2026-10. A
     # locally present but untracked strategy file is invisible to every CI
     # checkout, where the fail-safe direction then rebuilds a repack package.
-    rel_file = f"{rel}/.build-strategy"
-    if tracked is not None and rel_file not in tracked:
+    check_tracked(rel, ".build-strategy", tracked, errors)
+    check_strategy_consistency(package_dir, strategy, errors)
+    return strategy
+
+
+def check_tracked(rel, filename, tracked, errors):
+    if tracked is not None and f"{rel}/{filename}" not in tracked:
         errors.append(
-            f"{rel}: .build-strategy is present locally but not tracked by git "
+            f"{rel}: {filename} is present locally but not tracked by git "
             "(add it to the package's .gitignore whitelist)"
         )
 
-    pkgver_function = None
+def check_strategy_consistency(package_dir, value, errors):
+    rel = f"packages/{package_dir.name}"
     try:
         pkgver_function = PKGVER_FUNCTION.search(
-            (package_dir / "PKGBUILD").read_text(encoding="utf-8")
+            (package_dir / "PKGBUILD").read_text(encoding="utf-8", errors="replace")
         ) is not None
     except OSError:
         # check_package already reports a missing PKGBUILD.
-        return value
+        return
     if value == "vcs" and not pkgver_function:
         errors.append(
             f"{rel}: strategy 'vcs' requires a pkgver() function in the PKGBUILD"
         )
-    if value == "binary-repack" and pkgver_function:
+    if value == "binary" and pkgver_function:
         errors.append(
-            f"{rel}: strategy 'binary-repack' must not use pkgver() "
+            f"{rel}: strategy 'binary' must not use pkgver() "
             "(VCS semantics belong to the 'vcs' strategy)"
         )
-    return value
 
 
 def check_rebuild_on(package_dir, sections, errors, notes):
@@ -428,8 +435,7 @@ def check_update_source(root, package_dir, registry, tracked, errors, notes):
         )
     if not aur_url_file.is_file() and not in_registry:
         errors.append(
-            f"{rel}: no update source declared -- add .aur-url (+ .aur-commit) "
-            "for an AUR package, or an entry in config/package-updates.txt"
+            f"{rel}: no update source declared -- add {decl.UPDATE_FILENAME}"
         )
 
     if aur_url_file.is_file():
@@ -468,25 +474,45 @@ def check_update_source(root, package_dir, registry, tracked, errors, notes):
             )
 
 
+def check_workflow(root, where, name, detail, tracked, errors):
+    if tracked is not None:
+        if detail not in tracked:
+            errors.append(
+                f"{where}: {name} names workflow '{detail}', which is not tracked by git"
+            )
+        return
+    if not (root / detail).is_file():
+        errors.append(f"{where}: {name} names missing file '{detail}'")
+
+
+def check_declared_update(root, package_dir, tracked, errors, notes):
+    rel = f"packages/{package_dir.name}"
+    path = package_dir / decl.UPDATE_FILENAME
+    where = f"{rel}/{path.name}"
+    check_tracked(rel, path.name, tracked, errors)
+    update, strategy, problems = decl.read_update(path)
+    errors.extend(f"{rel}/{problem}" for problem in problems)
+
+    if isinstance(update, decl.WorkflowUpdate):
+        check_workflow(root, where, package_dir.name, update.path, tracked, errors)
+    elif isinstance(update, decl.AurMirror) and update.package != package_dir.name:
+        notes.append(
+            f"{where}: url points at AUR package '{update.package}', "
+            f"not '{package_dir.name}'"
+        )
+
+    if strategy is not None:
+        check_strategy_consistency(package_dir, strategy, errors)
+
+
 def check_registry_entries(root, packages, registry, tracked, errors):
-    """Validate that every registry entry points at something real."""
+    """Validate that every active registry entry points at something real."""
     for name, (kind, detail, lineno) in sorted(registry.items()):
         where = f"{REGISTRY_PATH}:{lineno}"
         if name not in packages:
             errors.append(f"{where}: no such package directory packages/{name}")
-            continue
-        if kind != "workflow":
-            continue
-        candidate = root / detail
-        if tracked is not None:
-            if detail not in tracked:
-                errors.append(
-                    f"{where}: {name} names workflow '{detail}', which is not "
-                    "tracked by git"
-                )
-            continue
-        if not candidate.is_file():
-            errors.append(f"{where}: {name} names missing file '{detail}'")
+        elif kind == "workflow":
+            check_workflow(root, where, name, detail, tracked, errors)
 
 
 OVERLAY_MARKER = "# emoeem overlay:"
@@ -577,14 +603,19 @@ def run(root):
         errors.append(f"{packages_root}: no package directories containing PKGBUILD")
         return errors, notes, 0
 
-    registry, registry_errors = load_registry(root / REGISTRY_PATH)
-    errors.extend(registry_errors)
+    superseded = {path.name for path in manifests if decl.has_update_file(path)}
+    registry = {}
+    if len(superseded) != len(manifests):
+        registry, registry_errors = load_registry(root / REGISTRY_PATH, superseded=superseded)
+        errors.extend(registry_errors)
     tracked = tracked_files(root)
-
     for package_dir in manifests:
         sections = check_package(root, package_dir, errors, notes)
-        check_build_strategy(package_dir, tracked, errors)
-        check_update_source(root, package_dir, registry, tracked, errors, notes)
+        if package_dir.name in superseded:
+            check_declared_update(root, package_dir, tracked, errors, notes)
+        else:
+            check_build_strategy(package_dir, tracked, errors)
+            check_update_source(root, package_dir, registry, tracked, errors, notes)
         check_rebuild_on(package_dir, sections, errors, notes)
 
     check_registry_entries(

@@ -1,56 +1,59 @@
-# add-aur-package.sh 详细说明
+# 导入和查看软件包
 
-`scripts/add-aur-package.sh` 用来把一个 AUR package base 导入 `main`
-分支。它只提交 PKGBUILD、`.SRCINFO`、补丁和 AUR 版本信息，不会把
-`*.pkg.tar.zst` 提交到 `main`。
+在源码 checkout 根目录用 `./manage.sh add` 导入 AUR 或本地 PKGBUILD。它只创建
+`packages/<pkgbase>/`，不会拉取本仓库，也不会暂存、提交或推送。已存在的包不会被覆盖。
 
-## 使用方式
+## 从 AUR 导入
 
 ```bash
-./scripts/add-aur-package.sh package-name
-./scripts/add-aur-package.sh --no-push package-name
-./scripts/add-aur-package.sh package-name https://example.com/package.git
+./manage.sh add package-name
+./manage.sh add package-name --strategy binary
 ```
 
-默认地址为：
+默认克隆 `https://aur.archlinux.org/<pkgbase>.git`。split package 建议传入 AUR 页面上的
+package base；若直接用输出包名克隆失败，CLI 会尝试通过 AUR RPC 查找对应的 package base。
+导入的文件来自该次克隆的提交，包括 PKGBUILD、`.SRCINFO` 和补丁等辅助文件；
+`update.toml` 会写入 `track = "aur"`、`url`、`commit` 和 `strategy`。导入时若发现已有
+该包的 overlay，命令会拒绝直接导入；先审查并应用 overlay，再用下面的本地导入方式，
+如仍要维护为 AUR 镜像，需把生成的声明改为 `aur` 并填写真正的 URL 和提交。
 
-```text
-https://aur.archlinux.org/package-name.git
+## 从本地目录导入
+
+```bash
+./manage.sh add package-name --from /path/to/pkgbuild-dir \
+  --track manual --reason 'Maintained in this repository' --non-interactive
 ```
 
-对于 split package，应传入 AUR 页面中的 package base，也就是 Clone URL
-最后的仓库名称。
+名称须与 PKGBUILD 的 `pkgbase` 一致。命令复制 PKGBUILD 和辅助文件，使用
+`makepkg --printsrcinfo` 重新生成 `.SRCINFO`，再写入新的 `update.toml`。这一步会执行
+PKGBUILD 顶层代码，只能导入已审查的本地目录，并以普通用户运行。不要用含构建产物或其他
+无关文件的目录。
 
-## 执行流程
+- 不指定 `--strategy` 时，有 `pkgver()` 默认 `vcs`，否则默认 `source`；重打包上游二进制和纯数据包应明确选 `binary` 或 `data`。
+- 终端交互模式会询问未提供的更新参数。`--non-interactive` 禁止询问；应显式传入需要的参数。未指定更新方式时，若有 `pkgver()` 且能识别唯一的未固定 Git 源，默认 `git-vcs`，否则默认 `manual`。
+- 自有更新工作流可用 `--track workflow --workflow .github/workflows/example.yml`；该路径必须存在并由 Git 跟踪才能通过清单校验。Git 更新方式可用 `--track git-tag` 等，并以 `--git` 指定上游地址。
 
-1. 启用 Bash 严格模式，任何命令、变量或管道错误都会停止脚本。
-2. 根据脚本自身位置计算仓库根目录，不依赖当前工作目录。
-3. 解析 `--no-push`、包名和可选的自定义 Git 地址。
-4. 限制包名只能包含 AUR 合法名称常用的字母、数字和 `@._+-`。
-5. 确认当前目录属于 Git checkout，并要求当前分支为 `main`。
-6. 使用 `git pull --ff-only origin main` 快进到最新源码版本。
-7. 拒绝覆盖已经存在的 `packages/package-name/`。
-8. 写入 `.aur-url`，再调用 `sync-aur-packages.sh` 导入 AUR 文件。
-9. 只暂存并提交新增的软件包目录，不会提交其他本地修改。
-10. 默认推送到 `origin/main`；`--no-push` 只保留本地提交。
+全部选项见 `./manage.sh add --help`；声明格式见 [依赖管理](DEPENDENCY-MANAGEMENT.md)。
 
-## 导入和校验
+## 复查并提交
 
-`sync-aur-packages.sh` 在临时目录浅克隆 AUR 仓库，记录当前 Git commit
-到 `.aur-commit`，然后复制 PKGBUILD、`.SRCINFO`、补丁和其他顶层文件。
+```bash
+./manage.sh packages list
+./manage.sh packages list --track aur
+./manage.sh packages show package-name
+python3 scripts/check-package-manifests.py
+./scripts/check-package.sh package-name
+```
 
-同名文件冲突时的规则：仓库自己的隐藏元数据（`.nvchecker.toml`、
-`.gitignore`、`.namcap-ignore` 等）保留本地版本；AUR 包内容的普通文件
-（补丁、LICENSE 等）以 AUR 为准，本地改动必须写进
-`scripts/overlays/<包名>.sh`，否则每次同步都会被覆盖。
+`packages list` 展示包基名、版本、更新方式及构建策略（`--no-header` 可省略表头）；
+`packages show` 按实际包基名查看输出包名和生效的更新声明。确认新增目录内没有构建产物，
+并审查 PKGBUILD、`.SRCINFO`、`update.toml` 及辅助文件后，再自行提交和推送。
 
-`check-package.sh` 随后检查：
-
-- 包目录名称是否合法。
-- `PKGBUILD` 和 `.SRCINFO` 是否存在。
-- PKGBUILD 是否通过 Bash 语法检查。
-- `.SRCINFO` 中声明的本地源文件是否齐全。
-- `pkgbase`、`pkgver` 和 `pkgrel` 是否可读取。
+推送后 GitHub Actions 会检查打包元数据，按构建计划编译并在发布检查通过后发布二进制包。
+每日 AUR 同步检查 `track = "aur"` 的包，更新 AUR 文件并把同步点写入 `update.toml` 的
+`commit`。仓库自己的 `update.toml`、`.nvchecker.toml` 和 `.gitignore` 等元数据不会被上游覆盖。
+对上游普通文件的本地定制（例如修改 PKGBUILD 或补丁）应写入幂等的
+`scripts/overlays/<pkgbase>.sh`，同步时会重新应用。
 
 ## 捆绑 runtime 的包的 namcap 例外
 
@@ -67,25 +70,9 @@ Python 模块报成缺失依赖（`pydepends`），也会把上游构建机留�
 报成不安全路径（`rpath`、`runpath`）。不写这个文件就必须让 namcap 全量通过，
 这是默认路径。
 
-## 推送后的自动流程
-
-`packages/**` 的变化会先触发 `check.yml`，在 Arch Linux 容器中运行
-`makepkg --printsrcinfo`、ShellCheck 和 namcap。随后 `build.yml` 只选择发生
-变化的软件包及其依赖者，在 Arch Linux 容器中安装二进制仓库或 AUR 依赖，
-然后运行 makepkg。
-
-成功生成的 `*.pkg.tar.zst` 会封装在 tar 中作为 Actions Artifact 保存，
-从而兼容 `epoch` 带来的冒号文件名。发布任务解包后再合并到 `repo` 分支，
-因此软件包原始名称不会改变。`repo` 分支使用 amend 和 force-with-lease
-保持单提交快照。
-
-每天的 `sync.yml` 会检查所有带 `.aur-url` 的包。AUR commit 变化时，它
-会更新文件、提交到 `main`，并只重建变化的软件包。
-
 ## 常见失败
 
-- `current branch is not main`：切换到 `main` 后重试。
-- `already managed`：该包已存在，使用 `sync-aur-packages.sh` 手动同步。
-- `Missing PKGBUILD/.SRCINFO`：上游 Git 仓库不是有效的 Arch 包仓库。
-- `git push` 失败：本地提交已经生成，修复认证后运行 `git push origin main`。
-- 构建失败：查看 GitHub Actions 对应软件包 job 的日志。
+- `already managed`：该包已存在。用 `packages show` 检查声明；AUR 包可用 `./scripts/sync-aur-packages.sh <pkgbase>` 同步。
+- `does not match .SRCINFO pkgbase`：本地导入的名称须与 `pkgbase` 一致，而不是 split package 的输出名。
+- `makepkg is required`：本地导入需在安装了 makepkg 的环境运行。
+- CI 构建失败：查看 GitHub Actions 对应软件包 job 的日志。

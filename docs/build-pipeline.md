@@ -49,7 +49,7 @@ ABI watch（`dependency-drift.yml`）和 maintenance（`maintenance.yml`）里�
 - overlay 精确触发
 - 无关文档不触发构建
 - build infrastructure 触发全量重建
-- `config/package-updates.txt`（更新来源登记表）只描述维护方式，不触发构建
+- 旧的全局更新来源登记表只描述维护方式，不触发构建；新包在各自的 `update.toml` 中声明
 
 `tests/test_repository.sh` 使用真实 `repo-add` 验证仓库生成、GitHub Release 文件名清洗和删除 package 后数据库更新。
 
@@ -57,7 +57,7 @@ ABI watch（`dependency-drift.yml`）和 maintenance（`maintenance.yml`）里�
 
 `scripts/check-package-manifests.py` 只用标准库，不需要 makepkg、不拉容器，因此在裸 runner 上先于 builder image 运行（`check.yml` 的 integration job）。它强制三条契约：
 
-- 每个 `packages/<name>` 必须且只能声明一个更新来源：AUR 镜像包用 `.aur-url` + `.aur-commit`；其余包必须出现在 `config/package-updates.txt`，用 `workflow <path>` 指向真实且被 git 跟踪的更新 workflow，或用 `manual <reason>` 明确说明无人更新。`workflow` 路径按 git 跟踪状态校验，workflow 改名不会静默留下孤儿包。
+- 每个包必须声明一个更新方式和一个构建策略。`packages/<pkgbase>/update.toml` 是权威声明：`track` 可选 `aur`、`workflow`、`manual` 或四种 Git track，`strategy` 独立决定构建行为。`workflow` 字段按 Git 跟踪状态校验，工作流改名不会静默留下孤儿包。旧格式仅用于兼容，字段见 [逐包声明](DEPENDENCY-MANAGEMENT.md#逐包声明updatetoml)。
 - 已提交的元数据自洽：`pkgbase` 等于目录名、`pkgver` 不含 `-`/`:`/空白、`pkgrel` 为数字、`pkgdesc`/`url`/`license` 非空、每个 `*sums` 数组条目数等于 `source` 条目数、`packages/` 下没有已提交的 gitlink。
 - `packages/<name>/.rebuild-on`（逐包重建触发声明）语法与指向正确：触发类型只能是 `soname` / `package`，`soname` 必须是「soname + 提供者包名」两个字段，`package` 指向的必须是真实存在的包目录，同一声明不重复、不指向自己。解析器与门禁共用 `scripts/list-rebuild-triggers.sh`，不存在两套解析。
 
@@ -96,7 +96,7 @@ ABI watch（`dependency-drift.yml`）和 maintenance（`maintenance.yml`）里�
 - 当前运行中的 Actions 数量
 - 最近失败的 Actions 数量
 
-原有添加、删除、AUR 同步、构建、构建跟踪、失败构建排查、本地检查、更新检查和 pacman 安装功能保持不变。
+原有添加、删除、AUR 同步、构建、构建跟踪、失败构建排查、本地检查、更新检查和 pacman 安装功能保持不变。不使用菜单时，`./manage.sh add` 可仅在本地导入软件包，`./manage.sh packages list` 和 `./manage.sh packages show <pkgbase>` 可查看清单与生效策略。用法见 [导入软件包](add-aur-package.md)。
 
 ## 验证命令
 
@@ -202,7 +202,7 @@ Builder 通过 `/etc/makepkg.conf.d/pkgbuild-aria2.conf` 为 HTTP/HTTPS/FTP sour
 
 `sync-aur-packages.sh` 现在采用事务式同步：先在临时目录克隆 AUR、写入提交指纹、应用 overlay、重新生成 `.SRCINFO` 并通过 Bash 语法检查；全部通过后才替换工作区中的 package 目录。这样上游更新或 overlay 失败不会破坏现有可用 PKGBUILD。
 
-`.aur-url` 与 `.aur-commit` 继续记录上游身份和同步点。
+AUR 镜像的 `update.toml` 用 `track = "aur"` 和 `url` 声明上游，以 `commit` 记录最近同步的提交。
 
 ### Phase 2：全量 PKGBUILD 审计
 
@@ -240,7 +240,7 @@ For local rootless Podman validation, the unprivileged default runtime blocks ne
 
 The five package-local `.nvchecker.toml` files cover quirc, mpeghdec, ffmpeg-full, svt-jpeg-xs-git and vapoursynth-plugin-mlrt-ncnn-runtime. `.github/workflows/upstream-check.yml` runs daily and on demand inside the CachyOS builder image. It seeds `oldver` from each literal PKGBUILD `pkgver`, normalizing a git package's `.g<short-sha>` suffix to the comparable short commit. A detected upstream change opens or comments on a deduplicated `[upstream]` issue; the workflow never edits a PKGBUILD or bumps checksums automatically.
 
-Packages with a fully automatic updater are deliberately outside that nvchecker set: `sing-box-ebpf` (`sing-box-ebpf-update.yml`), `sing-box-rule-sets` (`refresh-rule-sets.yml`) and `filee-bin` (`filee-update.yml`) validate and bump their own sources, so a second issue-based watch would only duplicate the work. `config/package-updates.txt` is the registry for both kinds and the manifest gate rejects a package that names a workflow not tracked by git.
+Packages with dedicated updaters (such as `filee-bin`) validate and bump their own sources, so a second issue-based watch would only duplicate the work. Each package's `update.toml` declares whether it uses a dedicated `workflow` or one of the `git-*` tracks handled by `scripts/hub/update.py`. The manifest gate rejects a `workflow` path not tracked by Git. `.nvchecker.toml` remains separate and only reports upstream changes.
 
 ### P3 — build failure issues
 

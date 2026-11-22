@@ -1,0 +1,4 @@
+track = "aur"
+strategy = "vcs"
+url = "https://aur.archlinux.org/svt-jpeg-xs-git.git"
+commit = "030e5c309551f4e5ed1ae4fb04165b9edada5d72"

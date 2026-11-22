@@ -19,6 +19,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LINTER = ROOT / "scripts" / "check-package-manifests.py"
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from hub import declaration as decl
 
 
 def git_environment():
@@ -139,17 +142,17 @@ class ManifestLintTest(unittest.TestCase):
             code, output, "strategy 'vcs' requires a pkgver() function"
         )
 
-    def test_binary_repack_rejects_pkgver_function(self):
+    def test_binary_strategy_rejects_pkgver_function(self):
         directory = self.add_package(
             "badvcs",
             pkgbuild=PKGBUILD % {"name": "badvcs"}
             + "\npkgver() {\n  printf '1.2.3.r1.gdeadbeef\\n'\n}\n",
         )
-        (directory / ".build-strategy").write_text("binary-repack\n", encoding="utf-8")
-        code, output = self.lint()
-        self.assert_error(
-            code, output, "strategy 'binary-repack' must not use pkgver()"
-        )
+        for strategy in ("binary", "binary-repack"):
+            with self.subTest(strategy=strategy):
+                (directory / ".build-strategy").write_text(f"{strategy}\n", encoding="utf-8")
+                code, output = self.lint()
+                self.assert_error(code, output, "strategy 'binary' must not use pkgver()")
 
     def test_vcs_strategy_with_pkgver_function_passes(self):
         directory = self.add_package(
@@ -245,6 +248,99 @@ class ManifestLintTest(unittest.TestCase):
         code, output = self.lint()
         self.assertEqual(code, 0, output)
         self.assertIn("NOTE", output)
+
+    # -- unified declarations --------------------------------------------
+
+    def test_unified_aur_uses_toml_over_legacy_metadata(self):
+        directory = self.add_package("alpha")
+        (directory / ".aur-commit").unlink()
+        (directory / ".build-strategy").write_text("invalid\n", encoding="utf-8")
+        self.write_registry("alpha\nalpha obsolete-kind obsolete detail\n")
+        self.add_package("beta")
+        (directory / "update.toml").write_text(
+            'track = "aur"\nstrategy = "binary-repack"\n'
+            'url = "https://aur.archlinux.org/upstream-name.git"\n'
+            f'commit = "{COMMIT}"\n',
+            encoding="utf-8",
+        )
+        code, output = self.lint()
+        self.assertEqual(code, 0, output)
+        self.assertIn("url points at AUR package 'upstream-name'", output)
+        declarations, errors = decl.load_all(self.tmp)
+        self.assertEqual(errors, [])
+        self.assertEqual(declarations[0].errors, ())
+        self.assertEqual(declarations[0].strategy, "binary")
+        self.assertEqual(
+            declarations[0].update,
+            decl.AurMirror("https://aur.archlinux.org/upstream-name.git", "upstream-name", COMMIT),
+        )
+
+    def test_unified_manual_needs_no_legacy_files(self):
+        directory = self.add_package("manual", aur=False)
+        (directory / ".build-strategy").unlink()
+        (directory / "update.toml").write_text(
+            'track = "manual"\nstrategy = "data"\nreason = "Bundled assets"\n',
+            encoding="utf-8",
+        )
+        code, output = self.lint()
+        self.assertEqual(code, 0, output)
+        declarations, errors = decl.load_all(self.tmp)
+        self.assertEqual(errors, [])
+        self.assertEqual(declarations[0].errors, ())
+        self.assertEqual(declarations[0].update, decl.ManualUpdate("Bundled assets"))
+
+    def test_unified_workflow_and_declaration_must_be_tracked(self):
+        directory = self.add_package("alpha", aur=False)
+        workflow = self.tmp / ".github/workflows/real.yml"
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text("on: push\n", encoding="utf-8")
+        self.git("init", "-q")
+        self.git("add", "packages")
+        (directory / "update.toml").write_text(
+            'track = "workflow"\nstrategy = "source"\nworkflow = ".github/workflows/real.yml"\n',
+            encoding="utf-8",
+        )
+        code, output = self.lint()
+        self.assert_error(code, output, "update.toml is present locally but not tracked by git")
+        self.assertIn("which is not tracked by git", output)
+        self.git("add", "packages", ".github")
+        code, output = self.lint()
+        self.assertEqual(code, 0, output)
+
+    def test_unified_declaration_errors_cannot_fall_back_to_legacy(self):
+        directory = self.add_package("alpha")
+        for contents, message in (
+            ('track = [', "update.toml: cannot read"),
+            ('track = "manual"\nreason = ""\n', "reason must be a non-empty string"),
+            ('track = "manual"\nreason = "a reason"\n', "strategy must be one of"),
+            ('track = "aur"\nstrategy = "source"\nurl = "wrong"\ncommit = "abc"\n',
+             "commit must be a 40-character git commit hash"),
+            ('track = "git-commit"\nstrategy = "invalid"\ngit = "https://example.org"\n',
+             "strategy must be one of"),
+            ('track = "git-vcs"\nstrategy = "vcs"\ngit = "https://example.org"\n',
+             "requires a pkgver() function"),
+            ('track = "unknown"\nstrategy = "source"\n', "track must be one of"),
+        ):
+            with self.subTest(message=message, contents=contents):
+                (directory / "update.toml").write_text(contents, encoding="utf-8")
+                code, output = self.lint()
+                self.assert_error(code, output, message)
+                self.assertTrue(decl.read_package(directory, {}).errors)
+
+    def test_git_tracking_requires_strategy_in_toml(self):
+        directory = self.add_package("alpha", aur=False)
+        for track in decl.GIT_TRACKS:
+            with self.subTest(track=track):
+                (directory / "update.toml").write_text(
+                    f'track = "{track}"\ngit = "https://example.org/repo"\n',
+                    encoding="utf-8",
+                )
+                code, output = self.lint()
+                self.assert_error(code, output, "update.toml: strategy must be one of")
+                declaration = decl.read_package(directory, {})
+                self.assertTrue(declaration.errors)
+                self.assertEqual(declaration.strategy, "")
+                self.assertEqual(declaration.update, decl.GitUpdate(track, "https://example.org/repo"))
 
     # -- registry validation ---------------------------------------------
 

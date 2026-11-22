@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-root="${AUDIT_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
+script_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+root="${AUDIT_ROOT:-$script_root}"
 readonly root
+aur_helper="$script_root/scripts/hub/aur.py"
 
 failures=0
 packages=()
@@ -57,11 +59,11 @@ for package in "${packages[@]}"; do
     arch_count="$(awk -F ' = ' '$1 == "\tarch" {n++} END {print n+0}' "$srcinfo")"
     (( arch_count > 0 )) || fail "$package: no architecture declared"
 
-    if [[ -f "$dir/.aur-url" ]]; then
-        url="$(<"$dir/.aur-url")"
-        [[ "$url" == https://aur.archlinux.org/*.git ]] ||
-            info "$package: custom AUR-compatible URL: $url"
-        [[ -s "$dir/.aur-commit" ]] || fail "$package: .aur-commit missing"
+    # Read the AUR declaration without writing tracking metadata.
+    if ! url="$(python3 "$aur_helper" audit "$dir" 2>&1)"; then
+        fail "$package: $url"
+    elif [[ -n "$url" && "$url" != https://aur.archlinux.org/*.git ]]; then
+        info "$package: custom AUR-compatible URL: $url"
     fi
 
 done

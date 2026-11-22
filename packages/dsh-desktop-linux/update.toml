@@ -1,0 +1,3 @@
+track = "workflow"
+strategy = "binary"
+workflow = ".github/workflows/dsh-desktop-linux-update.yml"

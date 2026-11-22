@@ -37,7 +37,7 @@ make_aur_repo() { # <name> <pkgver> [extra lines...]  → 路径
 }
 
 # 仓库骨架：真实脚本 + 三个包（good-pkg 正常前进；bad-pkg 的 overlay 必败；
-# check-fail-pkg 引用不存在的本地 source，落位后才被 check-package 拦下）。
+# check-fail-pkg 引用不存在的本地 source，被 staged check-package 拦下）。
 repo="$tmp/repo"
 mkdir -p "$repo/scripts/overlays" "$repo/packages"
 cp "$root/scripts/check-package.sh" "$root/scripts/validate-source-cache.sh" \
@@ -55,9 +55,7 @@ init_package() { # <name> <pkgver> <aur-dir>
     local dir="$repo/packages/$1"
     mkdir -p "$dir"
     fixture_pkgbuild "$1" "$2" > "$dir/PKGBUILD"
-    printf '%s\n' "$3" > "$dir/.aur-url"
-    # 与真实仓库一致：.aur-commit 是已跟踪文件（还原路径依赖这一点）。
-    printf '%s\n' '0000000000000000000000000000000000000000' > "$dir/.aur-commit"
+    printf 'track = "aur"\nstrategy = "source"\nurl = "%s"\ncommit = "0000000000000000000000000000000000000000"\n' "$3" > "$dir/update.toml"
     (cd "$dir" && makepkg --printsrcinfo > .SRCINFO)
 }
 
@@ -111,10 +109,7 @@ mkdir -p "$repo/scripts/lib"
 cp "$root/scripts/lib/pkgrel-policy.sh" "$repo/scripts/lib/"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$repo/scripts/overlays/solo-pkg.sh"
 aur_solo="$(make_aur_repo solo-pkg 1.0)"
-mkdir -p "$repo/packages/solo-pkg"
-fixture_pkgbuild solo-pkg 1.0 > "$repo/packages/solo-pkg/PKGBUILD"
-printf '%s\n' "$aur_solo" > "$repo/packages/solo-pkg/.aur-url"
-(cd "$repo/packages/solo-pkg" && makepkg --printsrcinfo > .SRCINFO)
+init_package solo-pkg 1.0 "$aur_solo"
 git -C "$repo" init -q
 git -C "$repo" add packages scripts
 git -C "$repo" -c user.name=fixture -c user.email=fixture@example.invalid commit -qm baseline
@@ -140,10 +135,7 @@ cp "$root/scripts/check-package.sh" "$root/scripts/validate-source-cache.sh" \
 mkdir -p "$repo/scripts/lib"
 cp "$root/scripts/lib/pkgrel-policy.sh" "$repo/scripts/lib/"
 aur_good2="$(make_aur_repo plain-pkg 1.1)"
-mkdir -p "$repo/packages/plain-pkg"
-fixture_pkgbuild plain-pkg 1.0 > "$repo/packages/plain-pkg/PKGBUILD"
-printf '%s\n' "$aur_good2" > "$repo/packages/plain-pkg/.aur-url"
-(cd "$repo/packages/plain-pkg" && makepkg --printsrcinfo > .SRCINFO)
+init_package plain-pkg 1.0 "$aur_good2"
 git -C "$repo" init -q
 git -C "$repo" add packages scripts
 git -C "$repo" -c user.name=fixture -c user.email=fixture@example.invalid commit -qm baseline
@@ -166,6 +158,77 @@ if REPO_ROOT="$repo" bash "$script" nonexistent-pkg > /dev/null 2>&1; then
 else
     ok 'a non-AUR package argument is rejected outright (exit 1, not isolation)'
 fi
+
+# 5. New metadata is discovered without legacy files; only its pin changes.
+new_aur="$(make_aur_repo toml-pkg 1.1)"
+new_dir="$repo/packages/toml-pkg"
+mkdir -p "$new_dir"
+cat > "$new_dir/update.toml" <<EOF
+track = 'aur'
+strategy = 'source'
+url = '$new_aur'
+  "commit" = '0000000000000000000000000000000000000000' # preserve this comment
+
+[extra]
+commit = 'keep-me'
+EOF
+cat > "$new_aur/update.toml" <<'EOF'
+track = 'manual'
+EOF
+printf 'unexpected upstream marker\n' > "$new_aur/.aur-url"
+printf 'unexpected upstream strategy\n' > "$new_aur/.build-strategy"
+git -C "$new_aur" add update.toml .aur-url .build-strategy
+git -C "$new_aur" -c user.name=fixture -c user.email=fixture@example.invalid commit -qm metadata
+cat > "$repo/scripts/overlays/toml-pkg.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '\n# applied overlay\n' >> "$1/PKGBUILD"
+EOF
+printf 'local-only\n' > "$new_dir/notes.txt"
+new_head="$(git -C "$new_aur" rev-parse HEAD)"
+sed "s/0000000000000000000000000000000000000000/$new_head/" "$new_dir/update.toml" > "$tmp/expected.toml"
+if REPO_ROOT="$repo" bash "$script" > "$tmp/log4" 2>&1; then
+    cmp "$tmp/expected.toml" "$new_dir/update.toml" || fail 'TOML refresh altered more than the top-level commit'
+    grep -qx '# applied overlay' "$new_dir/PKGBUILD" || fail 'the overlay for a TOML-managed package did not run'
+    [[ -f "$new_dir/notes.txt" && ! -e "$new_dir/.aur-url" && ! -e "$new_dir/.aur-commit" && ! -e "$new_dir/.build-strategy" ]] ||
+        fail 'sync did not preserve local-only content or imported legacy markers from upstream'
+else
+    fail "TOML discovery run failed: $(<"$tmp/log4")"
+fi
+
+# 6. Sync never writes old sidecars and rejects explicit legacy selections.
+legacy_dir="$repo/packages/legacy-pkg"
+mkdir -p "$legacy_dir"
+printf '%s\n' "$aur_good2" > "$legacy_dir/.aur-url"
+if REPO_ROOT="$repo" bash "$script" legacy-pkg > "$tmp/log-legacy" 2>&1; then
+    fail 'legacy-only package was accepted by sync'
+fi
+grep -q 'legacy-pkg has no AUR track in update.toml' "$tmp/log-legacy" || fail 'missing migration diagnostic'
+[[ ! -e "$legacy_dir/.aur-commit" ]] || fail 'sync created a legacy commit sidecar'
+
+# 7. A malformed TOML pin is a configuration error, not a fallback to legacy.
+printf '%s\n' "$aur_good2" > "$repo/packages/plain-pkg/.aur-url"
+printf '%s\n' '0000000000000000000000000000000000000000' > "$repo/packages/plain-pkg/.aur-commit"
+printf 'track = "aur"\nurl = "%s"\ncommit = "short"\n' "$aur_good2" > "$repo/packages/plain-pkg/update.toml"
+if REPO_ROOT="$repo" bash "$script" plain-pkg > "$tmp/log-invalid" 2>&1; then
+    fail 'sync fell back to legacy after an invalid TOML pin'
+else
+    [[ "$?" == 2 ]] || fail 'invalid TOML pin did not exit with configuration error 2'
+fi
+grep -q 'plain-pkg: update.toml: commit must be a 40-character hexadecimal Git commit' "$tmp/log-invalid" ||
+    fail 'expected package-scoped invalid TOML pin diagnostic'
+
+# 8. Post-overlay validation failure cannot overwrite an uncommitted working tree
+# or anything already staged in the index.
+init_package staged-fail-pkg 1.0 "$(make_aur_repo staged-fail-pkg 1.1 'source=("missing.patch")')"
+failed_dir="$repo/packages/staged-fail-pkg"
+git -C "$repo" add -- packages/staged-fail-pkg
+printf '\n# uncommitted work\n' >> "$failed_dir/PKGBUILD"
+old_index="$(git -C "$repo" rev-parse :packages/staged-fail-pkg/PKGBUILD)"
+if REPO_ROOT="$repo" bash "$script" staged-fail-pkg > "$tmp/log5" 2>&1; then
+    fail 'expected staged validation failure'
+fi
+[[ "$(git -C "$repo" rev-parse :packages/staged-fail-pkg/PKGBUILD)" == "$old_index" ]] &&
+    grep -qx '# uncommitted work' "$failed_dir/PKGBUILD" || fail 'failed sync modified index or working tree'
 
 if (( failures > 0 )); then
     printf '%d failure(s)\n' "$failures" >&2
