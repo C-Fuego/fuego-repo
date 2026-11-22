@@ -3,7 +3,7 @@
 这个项目把 `packages/*/PKGBUILD` 自动构建成 Arch Linux `x86_64`
 软件包，并在私有 `repo` 分支维护标准 pacman 仓库数据库。
 
-当前维护 17 个 package base。
+当前维护 21 个 package base。
 
 ## Features
 
@@ -47,6 +47,10 @@
 | `zpipes` | `x86_64` | Rezig 的管道屏保 |
 | `shorin-contrib-git` | `any` | SHORiN 的 Arch 仓库贡献脚本集（VCS 包，版本由 `pkgver()` 计算） |
 | `shorin-pac-git` | `any` | Shorin 的 pacman 辅助工具（VCS 包，版本由 `pkgver()` 计算） |
+| `magpie-bin` | `x86_64` | magpie 桌面版：一处挑选所有 AI 编码代理（Codex、Claude Code、Gemini CLI 等）的模型；直接重新打包上游发布的二进制 |
+| `luciole-git` | `x86_64` | 原生 Wayland 文件管理器，支持快速预览、标签页、分屏和 Miller 列（VCS 包，版本由 `pkgver()` 计算） |
+| `ttf-jetbrains-maple-mono-xx-xx-xx` | `any` | JetBrains Maple Mono 字体：JetBrains Mono 与 Maple Mono 的融合；直接重新打包上游发布的字体包 |
+| `flyline` | `x86_64` | Bash 插件，用现代的行编辑取代 readline |
 
 版本以各目录中的 `PKGBUILD` 和 `.SRCINFO` 为准。
 

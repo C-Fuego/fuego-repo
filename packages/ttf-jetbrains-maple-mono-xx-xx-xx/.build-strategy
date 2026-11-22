@@ -1,0 +1,2 @@
+data
+# Static font assets (arch any); not affected by system ABI, so dependency drift never forces a rebuild.
