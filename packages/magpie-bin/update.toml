@@ -1,4 +1,4 @@
 track = "aur"
 strategy = "binary"
 url = "https://aur.archlinux.org/magpie-bin.git"
-commit = "7952ff4b6170844f16ca4e37b99b769e0a20e1e8"
+commit = "5d1c5db2e8e139868ef0e65e1c38134d5c10ff7d"

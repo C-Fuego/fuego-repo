@@ -1,4 +1,4 @@
 track = "aur"
 strategy = "source"
 url = "https://aur.archlinux.org/fcitx5-wetypex.git"
-commit = "d43824536c087ebb8d8932264e8989e2e0cb2b6f"
+commit = "e140a9156d4481bf3eb6df6fd88278d114e3adc1"
