@@ -4,7 +4,7 @@
 
 pkgname=flyline
 pkgver=1.11.0
-pkgrel=3
+pkgrel=4
 pkgdesc="A Bash plugin to replace readline for a modern line editing experience"
 arch=('x86_64')
 url="https://github.com/HalFrgrd/flyline"

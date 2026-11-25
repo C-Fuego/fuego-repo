@@ -1,7 +1,7 @@
 pkgbase = folia
 	pkgdesc = 歌词可视化音乐播放器（Folia-rust，原生 Rust，x86-64-v3 优化）
 	pkgver = 0.1.3
-	pkgrel = 2
+	pkgrel = 3
 	url = https://github.com/Techuouo520/Folia-rust
 	arch = x86_64
 	license = AGPL-3.0-only

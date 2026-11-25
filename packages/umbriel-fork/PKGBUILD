@@ -1,7 +1,7 @@
 # Maintainer: C-Fuego
 pkgname=umbriel-fork
 pkgver=0.1.0.r262.dc5c86f
-pkgrel=2
+pkgrel=3
 pkgdesc='Umbriel Wayland compositor with the C-Fuego agent seat and shake-to-enlarge cursor'
 arch=('x86_64')
 url='https://github.com/C-Fuego/umbriel'
