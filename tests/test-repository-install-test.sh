@@ -27,6 +27,10 @@ case "$1" in
   -Sl) printf '%s\n' 'fuego-repo other-pkg 2.0-1' ;;
   -U)
     if [[ "$*" != *--assume-installed* && "$MOCK_EXTERNAL_DEP_FAIL" == 1 ]]; then
+      # 真实 pacman 的 provider 选择提示不带换行,紧随其后的告警会被拼在同一行。
+      if [[ "${MOCK_PROMPT_PREFIX:-0}" == 1 ]]; then
+        printf 'Enter a number (default=1): '
+      fi
       printf 'warning: cannot resolve "%s", a dependency of "demo"\n' "$MOCK_MISSING_DEP"
       printf 'error: failed to prepare transaction (could not satisfy dependencies)\n'
       exit 1
@@ -48,7 +52,7 @@ run_test() {
     export REPOSITORY_DIR="$tmp/repository" INCOMING_DIR="$tmp/incoming"
     export WORKSPACE_DIR="$tmp/workspace" REPOSITORY_NAME=fuego-repo
     export PACMAN_CONF="$tmp/pacman.conf"
-    export MOCK_MISSING_DEP="$1" MOCK_EXTERNAL_DEP_FAIL="$2"
+    export MOCK_MISSING_DEP="$1" MOCK_EXTERNAL_DEP_FAIL="$2" MOCK_PROMPT_PREFIX="${3:-0}"
     bash "$script"
   )
 }
@@ -59,6 +63,13 @@ grep -q 'assuming installed: linuxqq' <<<"$output"
 grep -q 'Repository install test passed for 1 package' <<<"$output"
 grep -q -- '--assume-installed=linuxqq' "$MOCK_LOG"
 echo 'ok: external dependency is assumed installed and the install passes'
+
+# provider 菜单把提示和告警拼成一行时,仍然要认出外部依赖(2026-11-25 全量发布)
+: > "$MOCK_LOG"
+output="$(run_test linuxqq 1 1)"
+grep -q 'assuming installed: linuxqq' <<<"$output"
+grep -q 'Repository install test passed for 1 package' <<<"$output"
+echo 'ok: an unresolvable dependency reported after a provider prompt is still recognised'
 
 # 本仓库自己的包缺依赖:闸门必须失败(fail closed)
 : > "$MOCK_LOG"

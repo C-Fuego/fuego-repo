@@ -134,7 +134,12 @@ if ! pacman -U --noconfirm --needed --overwrite '*' "${selected[@]}" 2>&1 | tee 
     # 解析,如 linuxqq-wayland-fix-git 的 linuxqq)在 clean 容器里天然不可
     # 解析,不算仓库缺陷——对这类缺失按已安装假设重试。缺的若是本仓库自己
     # 的包,那是真闸门,必须失败(fail closed)。
-    mapfile -t missing < <(sed -n 's/^warning: cannot resolve "\([^"]*\)", a dependency of.*/\1/p' "$install_log" | sort -u)
+    # 依赖缺失的告警不一定从行首开始:pacman 在遇到多个 provider 时先打印
+    # `Enter a number (default=1): ` 而**不带换行**,紧跟的那条
+    # `warning: cannot resolve` 就被拼在同一行(2026-11-25 全量发布:linuxqq
+    # 缺失 + 一串 provider 菜单,整条闸门因此误报「没有不可解析依赖」)。
+    # 所以只匹配子串,不锚定行首。
+    mapfile -t missing < <(sed -n 's/.*warning: cannot resolve "\([^"]*\)", a dependency of.*/\1/p' "$install_log" | sort -u)
     declare -a assume_args=() external=() internal=()
     for dep in "${missing[@]}"; do
         [[ -n "$dep" ]] || continue
