@@ -1,4 +1,4 @@
 track = "aur"
 strategy = "binary"
 url = "https://aur.archlinux.org/uu-remote-linux-bin.git"
-commit = "a728e43b66a191076116c904cc056a2e3872d049"
+commit = "3aa28bc7dc9878a6dbc306abd57eb3ade98baf9d"
