@@ -82,14 +82,14 @@ PKGBUILD_DEFAULT_MAKE_JOBS=2
 `Remove packages from private repository` 工作流随后会：
 
 1. 读取新增的删除记录。
-2. 从 `repo/x86_64` 删除匹配 `pkgname` 的所有当前版本及签名。
+2. 从 R2 的 `x86_64-v3/` 前缀下删除匹配 `pkgname` 的所有当前版本及签名。
 3. 从剩余软件包重新生成 `fuego-repo.db` 和 `fuego-repo.files`。
 4. 更新 SHA256、签名和单提交 `repo` 快照。
 
 删除完成后，`sudo pacman -Sy` 刷新数据库即可确认：
 
 ```bash
-pacman -Sl emoeem
+pacman -Sl fuego-repo
 ```
 
 从仓库删除不会卸载电脑上已经安装的软件包。如需卸载：
