@@ -405,6 +405,18 @@ else:
     srcinfo_lines.insert(source_rows[anchor] + 1, f'\tsource = {patch_name}\n')
     srcinfo_lines.insert(sum_rows[anchor] + 2, f'\tsha256sums = {patch_sum}\n')
 
+# FFmpeg 9.1 already contains the backport. Skip only if both hunks
+# reverse cleanly without fuzz; otherwise apply forward and fail on drift.
+command = f'patch -d "ffmpeg-${{pkgver}}" -Np1 -i "${{srcdir}}/{patch_name}"'
+block = (f'if ! patch -d "ffmpeg-${{pkgver}}" --force --reverse --dry-run --fuzz=0 '
+         f'-p1 -i "${{srcdir}}/{patch_name}" >/dev/null; then\n'
+         f'        {command}\n'
+         '    fi')
+if block not in text:
+    if text.count('    ' + command + '\n') != 1:
+        fail('cannot locate the openapv patch command to guard it')
+    text = text.replace('    ' + command + '\n', '    ' + block + '\n', 1)
+
 pkgbuild_path.write_text(text)
 srcinfo_path.write_text(''.join(srcinfo_lines))
 
@@ -418,8 +430,9 @@ declared = [line for line in lines if line.strip() == f"'{patch_sum}'"]
 if len(declared) != 1:
     fail('the vendored openapv checksum is missing or duplicated')
 applied = [line for line in lines if line.lstrip().startswith('patch') and patch_name in line]
-if len(applied) != 1:
-    fail('the vendored openapv patch is not applied exactly once in prepare()')
+guarded = [line for line in lines if line.lstrip().startswith('if ! patch') and patch_name in line]
+if len(applied) != 1 or len(guarded) != 1:
+    fail('the vendored openapv patch is not guarded and applied exactly once in prepare()')
 PY3
 
 [[ "$(grep -cF "'${oapv_patch}'" "$pkgbuild")" == 1 ]] ||
@@ -428,8 +441,10 @@ PY3
     fail 'the vendored openapv checksum is missing or duplicated in PKGBUILD'
 grep -qF "'${oapv_patch}'::" "$pkgbuild" &&
     fail 'the openapv source still points at a remote URL'
-[[ "$(grep -cE '^    patch .*openapv.*[.]patch' "$pkgbuild")" == 1 ]] ||
+[[ "$(grep -cE '^        patch .*openapv.*[.]patch' "$pkgbuild")" == 1 ]] ||
     fail 'the openapv patch is not applied exactly once in prepare()'
+[[ "$(grep -cE '^    if ! patch .*openapv.*[.]patch' "$pkgbuild")" == 1 ]] ||
+    fail 'the openapv patch is not guarded against an existing upstream fix'
 
 # 4. Mirror the changes into .SRCINFO: regenerate with makepkg when available
 #    (local sync runs); patch the two changed entries textually otherwise

@@ -202,38 +202,6 @@ jobs:
             --run-id "${{ github.run_id }}" \
             --repository "${{ github.repository }}"
 
-      - name: Stage freshly built in-repo prerequisites
-        shell: bash
-        env:
-          PACKAGE_NAME: ${{ matrix.package }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -Eeuo pipefail
-          mapfile -t deps < <(python3 -c 'import json,subprocess,sys; p=sys.argv[1]; plan=json.load(open(sys.argv[2], encoding="utf-8")); deps=json.loads(subprocess.check_output(["python3","scripts/build-dag.py","--prerequisites-for",p], text=True)); selected=set(plan.get("rebuild", [])); selected_deps=[d for d in deps if d in selected]; sys.stdout.write("\n".join(selected_deps))' "$PACKAGE_NAME" build-plan/plan.json)
-          ((${#deps[@]} == 0)) && { echo 'No selected in-repository prerequisites to stage; published dependencies remain in use.'; exit 0; }
-          mkdir -p staging localrepo/x86_64
-          for dep in "${deps[@]}"; do
-            artifact_dir="staging/$dep"
-            mkdir -p "$artifact_dir"
-            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "built-${dep}-${GITHUB_RUN_ID}" --dir "$artifact_dir"
-            tar_file="$artifact_dir/$dep.tar"
-            [[ -s "$tar_file" ]] || { echo "Missing prerequisite artifact payload: $tar_file" >&2; exit 1; }
-            extract_dir="$artifact_dir/extracted"
-            mkdir -p "$extract_dir"
-            tar --extract --file "$tar_file" --directory "$extract_dir"
-            mapfile -t packages < <(find "$extract_dir" -maxdepth 1 -type f -name '*.pkg.tar.zst' -print)
-            ((${#packages[@]} > 0)) || { echo "No package files in prerequisite artifact: $dep" >&2; exit 1; }
-            for package_file in "${packages[@]}"; do
-              # hosted runner 没有 bsdtar（libarchive-tools），GNU tar 的 --zstd
-              # 足以只读 .PKGINFO 这一个成员。
-              pkgname="$(tar --zstd -xOf "$package_file" .PKGINFO | awk -F ' = ' '$1 == "pkgname" {print $2; exit}')"
-              [[ -n "$pkgname" ]] || { echo "Missing pkgname in $package_file" >&2; exit 1; }
-              find localrepo/x86_64 -maxdepth 1 -type f -name "${pkgname}-*.pkg.tar.zst" -delete
-              cp "$package_file" localrepo/x86_64/
-            done
-          done
-          find localrepo/x86_64 -maxdepth 1 -type f -name '*.pkg.tar.zst' -printf '%f\n' | sort
-
       - name: Free runner disk space
         if: runner.environment == 'github-hosted'
         shell: bash
@@ -286,7 +254,7 @@ jobs:
           generation: ${{ steps.generation.outputs.value }}
           restore-caches: 'true'
 
-      - name: Fetch current private repository packages
+      - name: Fetch published repository packages
         shell: bash
         env:
           R2_BUCKET: ${{ vars.R2_BUCKET }}
@@ -316,14 +284,57 @@ jobs:
           export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
           source "$GITHUB_WORKSPACE/scripts/lib/timing.sh"
           if ! retry_transient 3 20 -- aws --endpoint-url "${R2_ENDPOINT%/}" s3 cp --only-show-errors --no-progress --recursive \
-              "s3://${R2_BUCKET}/x86_64/" localrepo/x86_64/; then
-            printf '::error::Cannot download published packages from s3://%s/x86_64/.\n' "$R2_BUCKET"
+              "s3://${R2_BUCKET}/${R2_PREFIX}/" localrepo/x86_64/; then
+            printf '::error::Cannot download published packages from s3://%s/%s/.\n' "$R2_BUCKET" "$R2_PREFIX"
             exit 1
           fi
           # Only package files seed the local repository; the database would be
           # rebuilt by create-repository.sh from scratch.
           find localrepo/x86_64 -maxdepth 1 -type f ! -name '*.pkg.tar.zst' -delete
-          find localrepo/x86_64 -maxdepth 1 -type f -printf '%f\n' | head -5
+          find localrepo/x86_64 -maxdepth 1 -type f -printf '%f\n' | awk 'NR <= 5'
+
+      - name: Stage freshly built in-repo prerequisites
+        shell: bash
+        env:
+          PACKAGE_NAME: ${{ matrix.package }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          mapfile -t deps < <(python3 -c 'import json,subprocess,sys; p=sys.argv[1]; plan=json.load(open(sys.argv[2], encoding="utf-8")); deps=json.loads(subprocess.check_output(["python3","scripts/build-dag.py","--prerequisites-for",p], text=True)); selected=set(plan.get("rebuild", [])); selected_deps=[d for d in deps if d in selected]; sys.stdout.write("\n".join(selected_deps))' "$PACKAGE_NAME" build-plan/plan.json)
+          ((${#deps[@]} == 0)) && { echo 'No selected in-repository prerequisites to stage; published dependencies remain in use.'; exit 0; }
+          mkdir -p staging localrepo/x86_64
+          for dep in "${deps[@]}"; do
+            artifact_dir="staging/$dep"
+            mkdir -p "$artifact_dir"
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "built-${dep}-${GITHUB_RUN_ID}" --dir "$artifact_dir"
+            tar_file="$artifact_dir/$dep.tar"
+            [[ -s "$tar_file" ]] || { echo "Missing prerequisite artifact payload: $tar_file" >&2; exit 1; }
+            extract_dir="$artifact_dir/extracted"
+            mkdir -p "$extract_dir"
+            tar --extract --file "$tar_file" --directory "$extract_dir"
+            mapfile -t packages < <(find "$extract_dir" -maxdepth 1 -type f -name '*.pkg.tar.zst' -print)
+            ((${#packages[@]} > 0)) || { echo "No package files in prerequisite artifact: $dep" >&2; exit 1; }
+            for package_file in "${packages[@]}"; do
+              # hosted runner 没有 bsdtar（libarchive-tools），GNU tar 的 --zstd
+              # 足以只读 .PKGINFO 这一个成员。
+              pkgname="$(tar --zstd -xOf "$package_file" .PKGINFO | awk -F ' = ' '$1 == "pkgname" {print $2; exit}')"
+              [[ -n "$pkgname" ]] || { echo "Missing pkgname in $package_file" >&2; exit 1; }
+              # Parse name-version-release-arch instead of matching a name
+              # prefix, which would also remove unrelated packages like foo-git.
+              for published in localrepo/x86_64/"${pkgname}"-*.pkg.tar.zst; do
+                [[ -f "$published" ]] || continue
+                published_name="${published##*/}"
+                published_name="${published_name%-*}" # arch and archive suffix
+                published_name="${published_name%-*}" # pkgrel
+                published_name="${published_name%-*}" # pkgver
+                if [[ "$published_name" == "$pkgname" ]]; then
+                  rm -- "$published"
+                fi
+              done
+              cp "$package_file" localrepo/x86_64/
+            done
+          done
+          find localrepo/x86_64 -maxdepth 1 -type f -name '*.pkg.tar.zst' -printf '%f\n' | sort
 
       - name: Build in reusable CachyOS builder
         shell: bash

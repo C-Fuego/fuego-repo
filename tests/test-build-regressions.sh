@@ -290,8 +290,10 @@ pkgbuild, srcinfo, vendored_sum = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv
 text = pkgbuild.read_text()
 text = text.replace("        '080-ffmpeg-openapv1.1-fix.patch'\n", '', 1)
 text = text.replace(f"            '{vendored_sum}'\n", '', 1)
-text = '\n'.join(line for line in text.splitlines()
-                 if not (line.lstrip().startswith('patch') and 'openapv' in line)) + '\n'
+import re
+text, removed = re.subn(r'^    if ! patch [^\n]*openapv[^\n]*\n'
+                        r'^        patch [^\n]*openapv[^\n]*\n^    fi\n', '', text, flags=re.M)
+assert removed == 1
 pkgbuild.write_text(text)
 
 text = srcinfo.read_text()
@@ -305,7 +307,7 @@ grep -qF "        '080-ffmpeg-openapv1.1-fix.patch'" "$overlay_fixture/PKGBUILD"
     || fail 'overlay did not re-inject the vendored openapv source entry'
 grep -qF "            '$vendored_sum'" "$overlay_fixture/PKGBUILD" \
     || fail 'overlay did not re-inject the vendored openapv checksum'
-[[ "$(grep -cE '^    patch .*openapv.*[.]patch' "$overlay_fixture/PKGBUILD")" == 1 ]] \
+[[ "$(grep -cE '^        patch .*openapv.*[.]patch' "$overlay_fixture/PKGBUILD")" == 1 ]] \
     || fail 'overlay did not re-inject the openapv prepare line exactly once'
 if command -v makepkg >/dev/null && (( EUID != 0 )); then
     (cd "$overlay_fixture" && makepkg --printsrcinfo) > "$overlay_fixture/generated.srcinfo" \
