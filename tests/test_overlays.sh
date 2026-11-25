@@ -33,6 +33,12 @@ if run_guard; then
     exit 1
 fi
 grep -qx unrelated "$fixture"
+# AUR stages the nested header under srcdir, but configure runs in ffmpeg-*.
+# Reapply the overlay as if the incoming recipe did not carry our include flag.
+sed -i '/export CFLAGS.*-I${srcdir}\/include/d' "$tmp/ffmpeg/PKGBUILD"
+bash "$root/scripts/overlays/ffmpeg-full.sh" "$tmp/ffmpeg" >/dev/null
+grep -Fxq '    export CFLAGS+=" -I${srcdir}/include"' "$tmp/ffmpeg/PKGBUILD"
+grep -Fxq '    ln -sf /usr/include/astcenc.h include/astcenc/astcenc.h' "$tmp/ffmpeg/PKGBUILD"
 first="$(sha256sum "$tmp/ffmpeg/PKGBUILD" | cut -d' ' -f1)"
 bash "$root/scripts/overlays/ffmpeg-full.sh" "$tmp/ffmpeg" >/dev/null
 [[ "$(sha256sum "$tmp/ffmpeg/PKGBUILD" | cut -d' ' -f1)" == "$first" ]]

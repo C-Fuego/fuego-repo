@@ -216,6 +216,7 @@ block = """    # Do not inherit the repository host's -march=native.
     export CXXFLAGS="$CFLAGS -Wp,-D_GLIBCXX_ASSERTIONS"
     export LDFLAGS='-Wl,-O1 -Wl,--sort-common -Wl,--as-needed -Wl,-z,relro -Wl,-z,now'
     export CFLAGS+=' -isystem/opt/cuda/include'
+    export CFLAGS+=" -I${srcdir}/include"
     export LDFLAGS+=' -L/opt/cuda/lib64'
 
     # fix build of libavfilter/asrc_flite.c with gcc 14+

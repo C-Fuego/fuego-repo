@@ -3,7 +3,7 @@
 
 pkgname=ffmpeg-full
 pkgver=9.1
-pkgrel=1.6
+pkgrel=1.7
 _svt_hevc_ver='4181c9ee0611baefb40b4c0ed10023cfd837d522'
 _whispercpp_ver='1.9.5'
 pkgdesc='Complete solution to record, convert and stream audio and video (all possible features including libfdk-aac)'
@@ -194,7 +194,8 @@ sha256sums=('1a4d394ae63d190a526cd052eb4415c156b5c5e2df37efab41a7de0b8fde2433'
 validpgpkeys=('FCF986EA15E6E293A5644F10B4322F04D67658D8')
 
 prepare() {
-    # ffmpeg includes the astc-encoder header from <astcenc/astcenc.h> instead of using just <astcenc.h>
+    # FFmpeg includes the AUR header as <astcenc/astcenc.h>; keep the
+    # compatibility path in the package source tree and add it to CFLAGS below.
     mkdir -p include/astcenc
     ln -sf /usr/include/astcenc.h include/astcenc/astcenc.h
     
@@ -287,6 +288,7 @@ build() {
     export CXXFLAGS="$CFLAGS -Wp,-D_GLIBCXX_ASSERTIONS"
     export LDFLAGS='-Wl,-O1 -Wl,--sort-common -Wl,--as-needed -Wl,-z,relro -Wl,-z,now'
     export CFLAGS+=' -isystem/opt/cuda/include'
+    export CFLAGS+=" -I${srcdir}/include"
     export LDFLAGS+=' -L/opt/cuda/lib64'
 
     # fix build of libavfilter/asrc_flite.c with gcc 14+
