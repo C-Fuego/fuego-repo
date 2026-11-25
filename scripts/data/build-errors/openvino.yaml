@@ -1,0 +1,20 @@
+# openvino SONAME drift: the CachyOS/extra provider bumps libopenvino_c.so.N
+# without a `provides=` that pacman could enforce, so a consumer built against
+# the previous SONAME breaks at link time.  Applies to any package linking it.
+rules:
+  - id: openvino-soname-drift
+    category: SONAMEError
+    stage: link
+    summary: openvino changed the libopenvino_c SONAME while a consumer still links the old one.
+    confidence: high
+    patterns:
+      - "libopenvino_c[.]so[.][0-9]+"
+    extract:
+      soname: "(libopenvino_c[.]so[.][0-9]+)"
+    root_cause: "the {soname} provider (openvino / CachyOS) drifted"
+    action:
+      inspect_provider: true
+      find_dependents: true
+      trigger_rebuild: true
+      safe_auto_fix: level3
+      retry: true

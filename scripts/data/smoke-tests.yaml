@@ -25,14 +25,6 @@ packages:
     # environment; upstream ships it and the repack must carry it verbatim.
     commands:
       - "test -f /usr/share/applications/deepseek-harness.desktop"
-  ffmpeg-full:
-    binaries:
-      - ffmpeg
-      - ffprobe
-    commands:
-      - "ffmpeg -version"
-      - "ffprobe -version"
-    timeout_seconds: 60
   mpeghdec:
     # 上游装的是 mpeghDecoder / mpeghUiManager,不是 mpeghdec（2026-10-11 实测）
     binaries:

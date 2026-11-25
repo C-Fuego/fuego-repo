@@ -187,10 +187,8 @@ jobs:
           path: build-plan
 
       - name: Wait for in-repo build prerequisites
-        # The matrix starts every package at once, so ffmpeg-full could link
-        # against the previous mpeghdec/quirc/svt-jpeg-xs-git while those are
-        # being rebuilt in the same run. Fails open: the wait is skipped with a
-        # warning if the API cannot be read.
+        # Matrix jobs start together. Wait for prerequisites that are being
+        # rebuilt in the same run before using their artifacts.
         shell: bash
         env:
           PACKAGE_NAME: ${{ matrix.package }}
@@ -206,7 +204,7 @@ jobs:
         if: runner.environment == 'github-hosted'
         shell: bash
         run: |
-          # ffmpeg-full / CUDA 构建接近 hosted runner 的磁盘上限；预装的
+          # 大型构建接近 hosted runner 的磁盘上限；预装的
           # 工具链这里用不到，删掉可腾出约 25 GB。
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
             /opt/hostedtoolcache/CodeQL /usr/local/lib/android /opt/gradle
@@ -226,7 +224,7 @@ jobs:
           PACKAGE_NAME: ${{ matrix.package }}
         run: |
           set -Eeuo pipefail
-          if [[ "$PACKAGE_NAME" == *cuda* || "$PACKAGE_NAME" == "ffmpeg-full" ]]; then
+          if [[ "$PACKAGE_NAME" == *cuda* ]]; then
             echo "flavor=cuda" >> "$GITHUB_OUTPUT"
           else
             echo "flavor=standard" >> "$GITHUB_OUTPUT"

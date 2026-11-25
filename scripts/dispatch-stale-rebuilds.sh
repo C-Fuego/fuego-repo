@@ -153,9 +153,11 @@ while IFS= read -r pkg; do
   if [[ -n "${active_pkg[$pkg]:-}" ]]; then
     printf 'SKIP %s: rebuild already queued/running.\n' "$pkg" |
       tee -a "$summary_file"
+    deferred_pkg+=("$pkg")
   elif [[ -n "${recent_fail_pkg[$pkg]:-}" ]]; then
     printf 'DEFER %s: rebuild failed within the last 24h; retry later.\n' "$pkg" |
       tee -a "$summary_file"
+    deferred_pkg+=("$pkg")
   elif [[ -n "${last_success_pkg[$pkg]:-}" && -z "${urgent_pkg[$pkg]:-}" ]]; then
     last_success_at="${last_success_pkg[$pkg]}"
     age=$((now - last_success_at))

@@ -44,14 +44,14 @@ AUR 同步（`sync-aur-packages.sh`）是 per-package 故障隔离的：单包�
 `packages/*/.nvchecker.toml`，每文件至少一个 section；`check-upstream-versions.py` 每日汇总跑 nvchecker + nvcmp，`[upstream]` issue 通道提示（开/评论/自动关闭）。
 
 - 普通包：基线 = PKGBUILD `pkgver`（git source 且 `use_commit` 时取 `.g<sha>` 短哈希）；
-- **vendored 依赖**：`__baselines__` 表给显式基线，支持 `pin:<文件>`（如 ffmpeg-full 的 `.lensfun-pin`）与 `pkgvar:<VAR>`（如 `_whispercpp_ver`）。git source 的显式基线同样截短 7 位，否则 nvcmp 恒报更新；
-- 基线优先取"已发布版本"（`emoeem.db`），PKGBUILD 只作未发布包的回退——正确的问题是"发布的东西旧不旧"。
+- **vendored 依赖**（可选）：`__baselines__` 表给显式基线，支持 `pin:<文件>` 与 `pkgvar:<VAR>`，用于「上游版本不来自本条 PKGBUILD 的 pkgver」的情况。git source 的显式基线同样截短 7 位，否则 nvcmp 恒报更新；
+- 基线优先取"已发布版本"（`fuego-repo.db`），PKGBUILD 只作未发布包的回退——正确的问题是"发布的东西旧不旧"。
 
 ## 运行依赖声明
 
 - `depends` 以运行时真实需要为准；构建期头文件进 `makedepends`；可选运行时能力进 `optdepends` 并写明运行条件（如 `cuda: for NVIDIA NPP filters (...)`）。
 - **预编译包的依赖**：`dsh-desktop-linux-bin` 采用 AUR 配方的 `depends` 和 `optdepends`，由常规 AUR 同步更新，并在发布前检查安装和运行时依赖。
-- 仓库内互相依赖的包（mpeghdec/quirc/svt-jpeg-xs-git → ffmpeg-full）：构建 DAG 分波次，下游 job 等待并把上游新产物 staging 进本地仓库（`wait-for-build-dependencies.sh`）。
+- 仓库内互相依赖的包（如 `shorin-contrib-git` 依赖 `shorin-pac-git` 提供的虚拟包 `shorin-pac`）：构建 DAG 分波次，下游 job 等待并把上游新产物 staging 进本地仓库（`wait-for-build-dependencies.sh`）。
 
 ## 仓库外触发（`.rebuild-on`）
 
@@ -64,14 +64,13 @@ package <name>               # 仓库解析不到版本的依赖走 AUR RPC 对�
 
 格式由 `list-rebuild-triggers.sh` 解析、`check-package-manifests.py` 把关、两个漂移检测器消费。逐包声明替代了旧的全局 soname 白名单（白名单只要列了，任何包缺这个库都被掩盖）。声明了但产物实际不 NEED 的 soname 会被报 `STALE-DECLARATION`（声明必须与产物一致）。
 
-## vendored 依赖的升级流程（ffmpeg-full 为例）
+## vendored 依赖的升级流程
 
-1. `[upstream]` issue 提示 lensfun/whisper.cpp 有新版；
-2. 改 `.lensfun-pin`（或 PKGBUILD `_whispercpp_ver`）；
+1. `[upstream]` issue 提示某个 vendored 依赖有新版；
+2. 改对应的 pin 文件（或 PKGBUILD 里的 `pkgvar` 变量）；
 3. `makepkg --printsrcinfo` 同步 `.SRCINFO`（overlay 会在下次 sync 时自动重放 pin）；
-4. 完整构建验证：`#commit=` 路径的 verifysource、补丁兼容性（070 whisper 补丁）、69 条功能矩阵；
-5. 矩阵假红先核对 token 与产物实际命名，修矩阵而不是放宽脚本。
+4. 完整构建验证：`#commit=` 路径的 verifysource 与补丁兼容性都过了才算升级成功。
 
 ## 相关文档
 
-[ABI 重建政策](abi-rebuild-policy.md)（漂移检测与重建）、[构建策略](build-strategy.md)（哪些包不参与）、[FFmpeg 功能矩阵](ffmpeg-feature-matrix.md)（功能验证）。
+[ABI 重建政策](abi-rebuild-policy.md)（漂移检测与重建）、[构建策略](build-strategy.md)（哪些包不参与）。

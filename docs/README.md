@@ -16,7 +16,6 @@ This index separates task-oriented tutorials from implementation references and 
 - [ABI rebuild policy](reference/abi-rebuild-policy.md)
 - [pkgrel policy](reference/pkgrel-policy.md)
 - [CI quality gates](reference/ci-quality-gates.md)
-- [FFmpeg feature matrix](reference/ffmpeg-feature-matrix.md)
 - [Performance profile](reference/performance-profile.md)
 
 ## Operations

@@ -200,7 +200,7 @@ disk_available="$(df -Pk "$root" | awk 'NR==2 { print $4 }')"
 if (( disk_available > 50 * 1024 * 1024 )); then
     record PASS 'Disk space' "$(( disk_available / 1048576 )) GiB free"
 elif (( disk_available > 15 * 1024 * 1024 )); then
-    record WARN 'Disk space' "$(( disk_available / 1048576 )) GiB free; ffmpeg-full needs about 25 GiB"
+    record WARN 'Disk space' "$(( disk_available / 1048576 )) GiB free; large builds may need more disk space"
 else
     record FAIL 'Disk space' "$(( disk_available / 1048576 )) GiB free; builds will run out of space"
 fi

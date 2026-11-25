@@ -83,7 +83,7 @@ PKGBUILD_DEFAULT_MAKE_JOBS=2
 
 1. 读取新增的删除记录。
 2. 从 `repo/x86_64` 删除匹配 `pkgname` 的所有当前版本及签名。
-3. 从剩余软件包重新生成 `emoeem.db` 和 `emoeem.files`。
+3. 从剩余软件包重新生成 `fuego-repo.db` 和 `fuego-repo.files`。
 4. 更新 SHA256、签名和单提交 `repo` 快照。
 
 删除完成后，`sudo pacman -Sy` 刷新数据库即可确认：

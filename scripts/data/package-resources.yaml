@@ -12,12 +12,6 @@ defaults:
   gpu: 0
 
 packages:
-  ffmpeg-full:
-    cpu: 3
-    ram: 3
-    disk: 3
-    gpu: 1
-    note: "full CUDA/LTO build; historically the slowest package by an order of magnitude"
   mpeghdec:
     cpu: 2
     ram: 2

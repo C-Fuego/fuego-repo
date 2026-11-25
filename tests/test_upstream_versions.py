@@ -20,8 +20,7 @@ validate_new_versions = _MODULE.validate_new_versions
 class UpstreamVersionTests(unittest.TestCase):
     def test_all_requested_packages_have_sources(self):
         definitions, baselines = load_definitions(ROOT)
-        expected = {'quirc', 'mpeghdec', 'ffmpeg-full', 'svt-jpeg-xs-git',
-                    'lensfun-master', 'whisper-cpp'}
+        expected = {'quirc', 'mpeghdec', 'svt-jpeg-xs-git'}
         self.assertEqual(expected, set(definitions))
         self.assertEqual(expected, set(baselines))
 
@@ -33,17 +32,8 @@ class UpstreamVersionTests(unittest.TestCase):
         self.assertEqual('git', definitions['svt-jpeg-xs-git']['source'])
         self.assertTrue(definitions['svt-jpeg-xs-git']['use_commit'])
 
-    def test_explicit_baselines_cover_vendored_dependencies(self):
-        definitions, baselines = load_definitions(ROOT)
-        # Phase 4：lensfun/whisper.cpp 是 vendored 依赖，基线不来自 pkgver。
-        self.assertEqual('52cf1a7', baselines['lensfun-master'])
-        self.assertEqual('1.9.5', baselines['whisper-cpp'])
-        self.assertEqual('git', definitions['lensfun-master']['source'])
-        self.assertTrue(definitions['lensfun-master']['use_commit'])
-
     def test_release_sources_are_not_aur_sources(self):
         definitions, _ = load_definitions(ROOT)
-        self.assertEqual('github', definitions['ffmpeg-full']['source'])
         self.assertEqual('github', definitions['quirc']['source'])
         self.assertEqual('github', definitions['mpeghdec']['source'])
 
@@ -60,14 +50,11 @@ class UpstreamVersionTests(unittest.TestCase):
             ], check=True, capture_output=True, text=True, env=env)
             config = tomllib.loads((tmp / 'sources.toml').read_text(encoding='utf-8'))
             oldver = json.loads((tmp / 'oldver.json').read_text(encoding='utf-8'))
-            expected = {'quirc', 'mpeghdec', 'ffmpeg-full', 'svt-jpeg-xs-git',
-                        'lensfun-master', 'whisper-cpp'}
+            expected = {'quirc', 'mpeghdec', 'svt-jpeg-xs-git'}
             self.assertIn('__config__', config)
             self.assertNotIn('keyfile', config['__config__'])
             self.assertEqual(expected, set(oldver))
             self.assertEqual('01bc7cc', oldver['svt-jpeg-xs-git'])
-            self.assertEqual('52cf1a7', oldver['lensfun-master'])
-            self.assertEqual('1.9.5', oldver['whisper-cpp'])
 
     def test_github_token_env_injects_keyfile_for_nvchecker(self):
         # runner IP 池打满匿名 60 req/h 配额导致 github source 403;有

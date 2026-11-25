@@ -24,11 +24,8 @@
 ### `Cannot auto-bump unsupported pkgrel: <x>`
 pkgrel 形状非法（三段/空/字母）。修 PKGBUILD 的 pkgrel 行，不要改脚本——形状政策是刻意的。
 
-### ffmpeg-full 构建红在 `MISSING flag/hwaccel/encoder/...`
-功能矩阵断言失败：configure 静默降级了某个 `--enable-*`。看 `dist/ffmpeg-features.json` 的 errors 与构建日志里 configure 的探测输出，补齐缺失依赖；若是矩阵 token 与产物实际命名不符（首次接入新 FFmpeg 版本时可能发生），对照产物 `-encoders` 等真实输出修 `feature-matrix.txt`，不要放宽脚本。
-
-### ffmpeg-full 构建红在 `ELF RPATH/RUNPATH` 或 `leaks build-tree substring`
-产物带构建树路径。查新加的 patch/构建段是否引入了 staging 安装路径；`--banned` 清单在 `build-in-arch.sh` 的调用参数里。
+### `ELF RPATH/RUNPATH` 或 `leaks build-tree substring`
+产物带构建树路径。查新加的 patch/构建段是否引入了 staging 安装路径；`runtime-verify.sh` 的 `--banned` 清单在 `build-in-arch.sh` 的调用参数里。
 
 ### 镜像 404 / `failed to commit transaction`
 CDN 边不同步（mirror 404 而源站 200）。构建脚本已带 `retry_transient`；连续失败换时段重跑，不要改 pacman.conf。
@@ -48,16 +45,16 @@ CDN 边不同步（mirror 404 而源站 200）。构建脚本已带 `retry_trans
 脚本自带重试 + "已接受确认"（`rebuild_is_queued` 轮询）。三轮全失败才红——此时看 workflow 日志确认没有 queued job，手动 `gh workflow run build.yml -f packages=<pkg>`。
 
 ### UPSTREAM 等待的包什么时候动
-上游发新资产时各自的更新工作流（dsh/filee/rule-sets）自动重新 pin 并 dispatch。等待清单在 ABI watch step summary 与 tracking issue 附注。不要手动 repack 相同资产来"修"它——那正是假升级。
+上游发新资产时各自的更新工作流（`update.toml` 里声明的 `workflow`）自动重新 pin 并 dispatch。等待清单在 ABI watch step summary 与 tracking issue 附注。不要手动 repack 相同资产来"修"它——那正是假升级。
 
 ## 更新器类
 
 ### 更新器红在 checksum/依赖对账
 dsh 的 `build()` 对账失败说明上游资产的 depend 集合变了：按错误信息改本地 `depends=()`（PKGBUILD + `makepkg --printsrcinfo` 同步 `.SRCINFO`），这是唯一需要人工的语义判断点。
-rule-sets 等仓库管理源的校验和失效时，`auto-repair` 会按 `update.toml` 的 `workflow` 字段派发支持手动触发的更新工作流，不在本地改哈希。先用 `./manage.sh packages show <pkgbase>` 核对更新方式和工作流路径；没有可派发工作流时需人工检查。
+上游源文件的校验和失效时，`auto-repair` 会按 `update.toml` 的 `workflow` 字段派发支持手动触发的更新工作流，不在本地改哈希。先用 `./manage.sh packages show <pkgbase>` 核对更新方式和工作流路径；没有可派发工作流时需人工检查。
 
 ### `[upstream]` issue 长期挂着
-nvchecker 发现上游新版本但发布未跟进。按 [依赖管理](../reference/dependency-management.md#vendored-依赖的升级流程ffmpeg-full-为例) 的 vendored 依赖升级流程处理；closed 即代表已追平。
+nvchecker 发现上游新版本但发布未跟进。按 [依赖管理](../reference/dependency-management.md#vendored-依赖的升级流程) 的 vendored 依赖升级流程处理；closed 即代表已追平。
 
 ## 本机环境类
 

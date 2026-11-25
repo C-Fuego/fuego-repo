@@ -7,7 +7,7 @@
 `scripts/build-planner.py` 是 CI 的唯一构建决策入口；它通过 `scripts/lib/pkgbuild_lib.py` 从 `.SRCINFO` 建立 provider → consumer 图，并合并逐包 `.rebuild-on` 声明与可用的已发布 ABI manifest。`scripts/build-dag.py` 只负责对最终 rebuild 集合进行依赖波次排序。
 
 - 直接依赖会触发下游包重建。
-- `provides` 虚拟包会参与依赖传播，例如 `ffmpeg-full` 提供 `ffmpeg` 时，依赖 `ffmpeg` 的包会被选中。
+- `provides` 虚拟包会参与依赖传播：package A 声明 `provides=('foo')`、package B 的 `depends` 里有 `foo` 时，A 一变化 B 就会被选中。
 - `depends` 中的版本约束会先归一化为依赖名。
 - Split package 的多个 `pkgname` 也被视为同一个 package base 的 provider。
 - `scripts/overlays/<package>.sh` 变化只触发对应 package。
@@ -67,7 +67,7 @@ ABI watch（`dependency-drift.yml`）和 maintenance（`maintenance.yml`）里�
 
 `packages/<name>/.rebuild-on` 把「这个包因为什么需要重建」写在包目录旁边，取代原来那份全局的 `scripts/data/external-sonames.txt` 例外表。两种行：
 
-- `soname <soname> <provider-package>`：容器仓库看不到的共享库，来自 chaotic-aur / archlinuxcn / arch4edu / AUR。例如 `packages/ffmpeg-full/.rebuild-on` 的 `soname libshine.so.3 shine`（`shine` 在 archlinuxcn 提供 `libshine.so.3`，CI 容器里没有）。`maintenance.yml` 的 soname 复查把声明的名字只并入**该包**的 provider 集合，所以一个包的外部依赖不会顺带给别的包放行；声明了却不再被 `NEEDED` 的名字判为过期声明（`STALE-DECLARATION`），而不是永久豁免。过期声明由 maintenance 用 `::error::` 注解报出来但**不中止**该 workflow：重建修不了它（只有人改 `.rebuild-on` 能修），所以不该连带停掉无人值守的依赖漂移重建；本地手动跑脚本仍然以退出码 4 结束（0 干净 / 2 用法 / 3 报告不可信 / 4 声明过期）。
+- `soname <soname> <provider-package>`：容器仓库看不到的共享库，来自 chaotic-aur / archlinuxcn / arch4edu / AUR。例如 `soname libshine.so.3 shine`（`shine` 在 archlinuxcn 提供 `libshine.so.3`，CI 容器里没有）。`maintenance.yml` 的 soname 复查把声明的名字只并入**该包**的 provider 集合，所以一个包的外部依赖不会顺带给别的包放行；声明了却不再被 `NEEDED` 的名字判为过期声明（`STALE-DECLARATION`），而不是永久豁免。过期声明由 maintenance 用 `::error::` 注解报出来但**不中止**该 workflow：重建修不了它（只有人改 `.rebuild-on` 能修），所以不该连带停掉无人值守的依赖漂移重建；本地手动跑脚本仍然以退出码 4 结束（0 干净 / 2 用法 / 3 报告不可信 / 4 声明过期）。
 - `package <repo-package>`：`.SRCINFO` 表达不出来的显式重建边，登记后与 `depends`/`provides` 一起参与重建选择，也参与 `dependency-drift.yml` 的版本比对——即使这个依赖后来从 `.SRCINFO` 里消失，只要 `.rebuild-on` 还写着它，就仍然被盯住（那正是只读 `.SRCINFO` 的旧行为会静默漏掉的情况）。比对的是 `<version>-<pkgrel>`：依赖只是重打包（pkgrel 变化）也可能换了 SONAME，所以同样算漂移。声明了却在本容器的仓库里查不到的包（例如只在 archlinuxcn 提供的 `shine`）只在报告里留一行 `NOTE`，不判成漂移，也不改变退出码。
 
 声明由包自己负责维护，两边都不放行：`check-package-manifests.py` 在裸 runner 上静态校验（见上），`maintenance.yml` 在容器里用真实 ELF 校验（缺声明报 `STALE`，多声明报 `STALE-DECLARATION`）。
@@ -139,7 +139,6 @@ pkgname 覆盖，会把仓库里更高的同名版本静默换成一个更低的
 | 位置 | 脚本 | 作用 |
 | --- | --- | --- |
 | AUR 同步 | `pkgrel-floor.sh --against-pkgbuild` | 上游 PKGBUILD 的 pkgrel 不得把本地的 `.N` 子版本号拉回去（同 pkgver 时） |
-| overlay | `scripts/overlays/ffmpeg-full.sh` | `.6` 是下限不是定值，已经更高的 pkgrel 原样保留 |
 | 构建前 | `pkgrel-floor.sh --against-repository` | 已发布版本是下限，产物必须严格新于它；仓库里的 pkgver 更新时直接拒绝构建 |
 | 发布闸门 | `verify-publish-inputs.sh` | 产物落后于已发布版本 = 硬失败（以前只有 WARNING） |
 | 发布后 | `write-back-pkgrel.sh` | 把产物版本写回 PKGBUILD/.SRCINFO，源码树追上仓库 |
@@ -181,11 +180,11 @@ GitHub Actions 使用 `actions/cache` 恢复 `.cache/pkgbuild`，缓存 key 按 
 `.github/builder/Dockerfile` 支持 `CUDA_BUILDER=1`，发布两个 GHCR builder：
 
 - `pkgbuild-builder:latest`：标准 CachyOS-v3 builder。
-- `pkgbuild-builder:cuda`：额外安装官方仓库 CUDA toolkit，用于 CUDA/ffmpeg-full 构建。
+- `pkgbuild-builder:cuda`：额外安装官方仓库 CUDA toolkit，用于名称包含 `cuda` 的包。
 
-Builder 同时启用官方 Chaotic-AUR 二进制仓库作为 AUR 依赖的预编译补充来源。这样 `ffmpeg-full` 等大型包不需要重复编译所有 AUR 依赖；本次验证中原先会进入 AUR 构建队列的 24 个依赖收敛到仅 4 个仍需从 AUR 构建。Chaotic-AUR 仅作为依赖来源，不替代 CachyOS-v3 基线，也不替代目标 package 自身构建。
+Builder 同时启用官方 Chaotic-AUR 二进制仓库作为 AUR 依赖的预编译补充来源。这样大型包不需要重复编译所有 AUR 依赖；接入时原先会进入 AUR 构建队列的 24 个依赖收敛到仅 4 个仍需从 AUR 构建。Chaotic-AUR 仅作为依赖来源，不替代 CachyOS-v3 基线，也不替代目标 package 自身构建。
 
-CI 根据 package 名称选择 CUDA builder；`ffmpeg-full` 和名称包含 `cuda` 的 package 使用 CUDA builder。CUDA builder 同时安装 `gcc15`，因为当前 CUDA 13.4 的 `nvcc` 会选择 GCC 15 作为 host compiler；本地验证要求 `nvcc`、`g++-15` 和 `cuda` package 可用。
+CI 根据 package 名称选择 CUDA builder；名称包含 `cuda` 的 package 使用 CUDA builder。CUDA builder 同时安装 `gcc15`，因为当前 CUDA 13.4 的 `nvcc` 会选择 GCC 15 作为 host compiler；本地验证要求 `nvcc`、`g++-15` 和 `cuda` package 可用。
 
 ### 环境一致性测试
 
@@ -238,9 +237,9 @@ For local rootless Podman validation, the unprivileged default runtime blocks ne
 
 ### P2 — upstream release watch
 
-The five package-local `.nvchecker.toml` files cover quirc, mpeghdec, ffmpeg-full, svt-jpeg-xs-git and vapoursynth-plugin-mlrt-ncnn-runtime. `.github/workflows/upstream-check.yml` runs daily and on demand inside the CachyOS builder image. It seeds `oldver` from each literal PKGBUILD `pkgver`, normalizing a git package's `.g<short-sha>` suffix to the comparable short commit. A detected upstream change opens or comments on a deduplicated `[upstream]` issue; the workflow never edits a PKGBUILD or bumps checksums automatically.
+The three package-local `.nvchecker.toml` files cover quirc, mpeghdec and svt-jpeg-xs-git. `.github/workflows/upstream-check.yml` runs daily and on demand inside the CachyOS builder image. It seeds `oldver` from each literal PKGBUILD `pkgver`, normalizing a git package's `.g<short-sha>` suffix to the comparable short commit. A detected upstream change opens or comments on a deduplicated `[upstream]` issue; the workflow never edits a PKGBUILD or bumps checksums automatically.
 
-Packages with dedicated updaters (such as `filee-bin`) validate and bump their own sources, so a second issue-based watch would only duplicate the work. Each package's `update.toml` declares whether it uses a dedicated `workflow` or one of the `git-*` tracks handled by `scripts/bot/update.py`. The manifest gate rejects a `workflow` path not tracked by Git. `.nvchecker.toml` remains separate and only reports upstream changes.
+Packages with dedicated updaters (such as `dsh-desktop-linux-bin`) validate and bump their own sources, so a second issue-based watch would only duplicate the work. Each package's `update.toml` declares whether it uses a dedicated `workflow` or one of the `git-*` tracks handled by `scripts/bot/update.py`. The manifest gate rejects a `workflow` path not tracked by Git. `.nvchecker.toml` remains separate and only reports upstream changes.
 
 ### P3 — build failure issues
 

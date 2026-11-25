@@ -98,7 +98,7 @@ bash "$root/scripts/runtime-verify.sh" --file "$work/okfixture.pkg.tar.zst" >/de
 printf '%s\n' '3/3: smoke manifest expectations are enforced'
 smoke="$work/smoke"
 mkdir -p "$smoke/usr/bin"
-printf 'pkgname = ffmpeg-full\npkgver = 1.0-1\narch = x86_64\n' >"$smoke/.PKGINFO"
+printf 'pkgname = repo-manager\npkgver = 1.0-1\narch = x86_64\n' >"$smoke/.PKGINFO"
 pack "$smoke" "$work/smokefixture.pkg.tar.zst"
 if bash "$root/scripts/runtime-verify.sh" --file "$work/smokefixture.pkg.tar.zst" >/dev/null 2>&1; then
     fail 'a package missing its declared binaries passed verification'

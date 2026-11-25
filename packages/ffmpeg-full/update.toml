@@ -1,4 +1,0 @@
-track = "aur"
-strategy = "source"
-url = "https://aur.archlinux.org/ffmpeg-full.git"
-commit = "09d2d86999b0d01ace93f76e4861dafeb411e9fa"

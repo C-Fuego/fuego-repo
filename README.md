@@ -262,7 +262,7 @@ gh workflow run build.yml -f packages=<pkg> -f make_jobs=4 [-f bump_pkgrel=true]
   的优先级高于 `LANG`，中文环境下 `%F` 输出「一般文件」而不是
   `regular file`，于是它扫不到任何文件，永远报告「没有需要重建的包」。
   实测：`checkrebuild -i fuego-repo` 无输出，写成 `LC_ALL=C checkrebuild -i fuego-repo`
-  后立刻列出 `fuego-repo  ffmpeg-full`。手动调用必须带 `LC_ALL=C`。
+  后立刻列出需要重建的包（例如 `fuego-repo  mpeghdec`）。手动调用必须带 `LC_ALL=C`。
 - `checkrebuild` 默认只覆盖 AUR（foreign）包和 `file://` 仓库，私人仓库
   需要显式 `-i fuego-repo`。
 
@@ -303,8 +303,8 @@ SONAME），对象既有当前 `.SRCINFO` 里的依赖，也有 `.rebuild-on` �
 如果依赖提供者自己没声明 `provides=('libfoo.so=N-64')`（例如 chaotic-aur 的
 `openapv`、CachyOS 的 `openvino`），pacman 无法阻止不兼容升级，只能依赖上面的
 自动检测及时重建。openvino `2026.4.0` → `2026.4.1` 把 `libopenvino_c.so.2640`
-换成 `.2641` 就是这样打断了 `ffmpeg-full`：`openvino` 在 depends 里是普通依赖，
-pacman 拦不住；本地 hook 当场报了 `fuego-repo  ffmpeg-full`，但真正的重建要等检测器
+换成 `.2641` 就是这样打断了依赖它的包：`openvino` 在 depends 里是普通依赖，
+pacman 拦不住；本地 hook 当场报出了受影响的包名，但真正的重建要等检测器
 发现——这就是把 soname 扫描从「每天一次」提到「每两小时一次」的原因。
 
 ## 客户端配置
@@ -357,17 +357,6 @@ R2 争用同一名字，需要先删掉。
 `SigLevel = Required DatabaseRequired`。
 
 建议为 CI 单独创建仅用于仓库签名的 GPG 子密钥。
-
-## 资源与许可
-
-`ffmpeg-full` 会下载 CUDA，完整构建仍可能消耗较多时间和磁盘。可以在
-仓库的 Actions Variables 中设置 `BUILD_RUNNER=self-hosted`，改用带
-Docker 的 Linux 自托管 runner。
-
-`ffmpeg-full` 的许可标识是
-`LicenseRef-nonfree-and-unredistributable`。仓库必须保持私有，产物仅供
-最终用户本人构建和使用，不要公开发布或用于商业用途。
-
 
 ## 维护工程化状态
 

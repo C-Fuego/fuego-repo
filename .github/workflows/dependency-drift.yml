@@ -239,7 +239,7 @@ jobs:
               printf '已发布包与当前仓库的依赖 / SONAME 不再匹配。\n\n已自动 dispatch 重建（bump_pkgrel=true）：\n\n'
               printf '%s\n' "$STALE" | tr ',' '\n' | sed 's/^/- /'
               if [[ -n "${DEFERRED:-}" ]]; then
-                printf '\n仍在成功冷却期内、暂未重建：\n\n'
+                printf '\n仍有漂移，等待已有构建完成或冷却期结束：\n\n'
                 printf '%s\n' "$DEFERRED" | tr ',' '\n' | sed 's/^/- /'
               fi
               if [[ -n "$upstream_list" ]]; then
@@ -252,10 +252,10 @@ jobs:
             else
               gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
             fi
-          elif [[ -n "${DEFERRED:-}" ]]; then
-            # 漂移仍然存在，只是被成功冷却挡住了：不能关成「已一致」。
-            printf 'Drift still reported for %s; rebuild deferred by the success cooldown.\n' \
-              "$DEFERRED" >> "$GITHUB_STEP_SUMMARY"
+          elif [[ -s maintenance-out/stale.txt ]]; then
+            # 判断是否恢复以检测结果为准，即使所有候选包都没有进入构建队列。
+            printf 'Drift still reported for %s; no new rebuild was dispatched.\n' \
+              "$(paste -sd, maintenance-out/stale.txt)" >> "$GITHUB_STEP_SUMMARY"
           elif [[ -n "$upstream_list" ]]; then
             # 没有 STALE/DEFERRED 但有 repack/data 包在等上游：不是「已一致」，
             # issue 保持打开（不打扰、不误关）；summary 已逐行列出等待清单。

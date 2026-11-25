@@ -11,10 +11,9 @@
 | PKGBUILD 语法 / `.SRCINFO` 一致性 | `check-package.sh` + namcap | check.yml per-package + 构建前 | 红 |
 | 全量本地测试套件 | `tests/run-all.sh`（builder 容器内非 root） | check.yml integration | 红 |
 | workflow 引用完整性（引用的脚本必须已提交） | `tests/test_workflow_references.py` | check.yml | 红 |
-| source checksum + GPG | makepkg validity + `validate-source-cache.sh` + ffmpeg key 指纹预验 | 构建期 | 构建失败 |
+| source checksum + GPG | makepkg validity + `validate-source-cache.sh` | 构建期 | 构建失败 |
 | 上游资产校验（tag/asset/digest/.PKGINFO 字段/依赖对账） | 各更新工作流 + dsh `build()` | 更新候选构建 | 更新拒绝 / 构建失败 |
 | .BUILDINFO 依赖对账 + runtime 验证 | `verify-build-dependencies.sh` + `runtime-verify.sh` | 构建后 | 红 |
-| ffmpeg 功能矩阵（69 条 + 功能链 + ELF） | `verify-ffmpeg-features.sh` | ffmpeg-full 构建后 | 构建失败 |
 | 构建产物检查 | SHA256SUMS / 2 GiB 上限 / 空产物拒绝 / namcap 硬门禁 | 构建后 | 红 |
 | 发布闸门 | `verify-publish-inputs.sh`（降级硬拒、撞车硬拒、same-version SKIP） + `verify-repository.sh` + `repository-install-test.sh` | 发布前 | 发布失败 |
 | ABI 漂移 | `dependency-drift.yml`（版本 + SONAME，每 2h） | 定时 | 检测器崩溃即红；发现即 dispatch / UPSTREAM 报告 |

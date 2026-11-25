@@ -23,7 +23,6 @@
 | E3 `prepare-build-source.sh`（`BUMP_PKGREL=true`） | ABI 重建 dispatch（build.yml input） | 构建副本 +1；`.pkgrel-floor-skip` 在场时不做任何事 |
 | E4 `auto-repair.sh` bump_pkgrel | 构建失败自动修复（SONAMEError/RuntimeDependencyError，Level 3） | 源码树 +1；skip 包改判 report-only，apply 层双保险 |
 | E5 `write-back-pkgrel.sh` | 发布成功后 | 以构建产物为准回写源码树；只允许前进；`[skip ci]` 提交 |
-| E6 `overlays/ffmpeg-full.sh` | AUR 同步后 | ffmpeg-full 的 `.6` 下限，只升不降 |
 | E7 更新器重置 | dsh/filee/sing-box-ebpf 上游新版本 | `pkgrel=1`（dsh 上游资产内嵌 `-1`，版本前进靠 pkgver） |
 
 执行顺序：`build-in-arch.sh` 里 E3 先于 E2；`BUMP_PKGREL=true` 时先 +1 再对齐下限，所以 E2 的 skip 分支不需要"撤销"。

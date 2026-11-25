@@ -1,4 +1,4 @@
-# CUDA / nvcc specific failures (ffmpeg-full and CUDA packages).
+# CUDA / nvcc specific failures (packages built with the CUDA builder).
 rules:
   - id: nvcc-host-compiler
     category: CompilerError

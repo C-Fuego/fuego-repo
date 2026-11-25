@@ -11,13 +11,11 @@ Roles that are easy to conflate are kept apart:
   update        which process refreshes PKGBUILD pkgver (at most one)
   trackers      which upstream versions the repository watches (zero or more)
 
-The distinction matters.  ffmpeg-full has one update source (an AUR mirror)
-and three trackers (FFmpeg itself plus two vendored dependencies); the
-vendored lensfun commit is watched for drift but never updates the package on
-its own.  Treating those as one list would either lose two trackers or claim
-three update sources.  `declaration.validate` cross-checks the result against
-the existing readers, so a disagreement is a failing check rather than a
-silent divergence.
+The distinction matters for packages that track vendored dependencies:
+those trackers are watched for drift but never update the package on their own.
+Treating those as one list would either lose trackers or claim multiple update
+sources.  `declaration.validate` cross-checks the result against the existing
+readers, so a disagreement is a failing check rather than a silent divergence.
 """
 
 from __future__ import annotations
@@ -111,8 +109,9 @@ class Tracker:
     """One nvchecker definition, plus the baseline it is compared against.
 
     `name` is the nvchecker table name, which is *not* necessarily the package
-    name: ffmpeg-full watches 'lensfun-master' and 'whisper-cpp' too.  `config`
-    is the definition verbatim so that regenerating the TOML is byte-exact.
+    name: a package can watch a vendored dependency under its own upstream
+    name.  `config` is the definition verbatim so that regenerating the TOML is
+    byte-exact.
     """
 
     name: str

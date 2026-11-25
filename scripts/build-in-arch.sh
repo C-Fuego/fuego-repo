@@ -168,14 +168,6 @@ as_builder() {
         environment+=("XDG_CACHE_HOME=${cache_dir}/yay/${package_name}" "CARGO_HOME=${cargo_cache_dir}")
     fi
 
-    if [[ "$package_name" == "ffmpeg-full" ]]; then
-        environment+=(
-            "CUDA_PATH=/opt/cuda"
-            "NVCC_CCBIN=/usr/bin/g++-15"
-            "PATH=/usr/lib/ccache/bin:/opt/cuda/bin:${PATH}"
-        )
-    fi
-
     runuser -u builder -- \
         env "${environment[@]}" "$@"
 }
@@ -224,31 +216,6 @@ bash "${workspace_dir}/scripts/validate-source-cache.sh" "${package_dir}" "${sou
 timing_end prepare
 timing_begin sources
 
-if [[ "$package_name" == "ffmpeg-full" ]]; then
-    readonly ffmpeg_signing_key="FCF986EA15E6E293A5644F10B4322F04D67658D8"
-    curl --fail --silent --show-error --location \
-        --connect-timeout 30 \
-        --max-time 300 \
-        --retry 5 \
-        --retry-all-errors \
-        --retry-delay 5 \
-        https://ffmpeg.org/ffmpeg-devel.asc \
-        --output /tmp/ffmpeg-devel.asc
-
-    if ! gpg --batch --with-colons --import-options show-only \
-        --import /tmp/ffmpeg-devel.asc |
-        awk -F: '$1 == "fpr" { print $10 }' |
-        grep -Fxq "$ffmpeg_signing_key"; then
-        printf 'The downloaded FFmpeg key has an unexpected fingerprint.\n' >&2
-        exit 1
-    fi
-    as_builder gpg --batch --import /tmp/ffmpeg-devel.asc
-
-    printf 'Downloading and verifying FFmpeg sources...\n'
-    as_builder env SRCDEST="$source_cache_dir" bash -c \
-        "cd '$package_dir' && makepkg --verifysource --noconfirm"
-fi
-
 timing_end sources
 
 if [[ "$prepared_image" != "1" ]]; then
@@ -296,13 +263,6 @@ case "${1:-}" in
 esac
 __PACMAN_SHIM__
 chmod 0755 /usr/local/bin/pacman
-if [[ "$package_name" == "ffmpeg-full" ]]; then
-    # Resolve virtual/provider dependencies non-interactively and pin them to
-    # the same concrete packages selected by this local CachyOS-v3 profile.
-    retry_transient 3 20 -- pacman -S --needed --noconfirm \
-        sdl2-compat libglvnd l-smash onetbb tevent \
-        tesseract-data-eng tesseract-data-osd
-fi
 # PKGBUILD 声明的 conflicts 若已被镜像提供(基础镜像随上游滚动更新,例如
 # ffmpeg 2:9.0.2 进入基础包集),yay -Bi 收尾的 pacman -U 会撞冲突事务:
 # --noconfirm 对 "Remove ...? [y/N]" 的默认答案是 N,整次安装中止、
@@ -460,19 +420,6 @@ for package_file in "${package_files[@]}"; do
     bsdtar -xOf "$package_file" .BUILDINFO > "${output_dir}/${filename}.BUILDINFO"
     bash "${workspace_dir}/scripts/verify-build-dependencies.sh" "${output_dir}/${filename}.BUILDINFO"
 done
-
-# ffmpeg-full 专属：configure 是尽力而为（--enable-lib* 探测失败会静默降级），
-# 只有对真实产物的断言能拦住静默功能丢失。矩阵、功能链路、ELF 检查全部失败
-# 即构建失败；GPU 专项按探测结果标注 passed / failed / not-executed，绝不把
-# "没测"伪装成"通过"（Phase 4.3/4.4/4.5）。
-if [[ "$package_name" == "ffmpeg-full" ]]; then
-    printf 'Running the ffmpeg feature matrix verification...\n'
-    bash "${workspace_dir}/scripts/verify-ffmpeg-features.sh" \
-        --ffmpeg /usr/bin/ffmpeg \
-        --matrix "${workspace_dir}/packages/ffmpeg-full/feature-matrix.txt" \
-        --json-out "${output_dir}/ffmpeg-features.json" \
-        --banned staging,srcdir
-fi
 
 timing_end verify
 timing_begin smoke

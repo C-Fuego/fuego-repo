@@ -33,7 +33,7 @@ skip_list="${INSTALL_TEST_SKIP:-}"
 
 # Packages whose install closure is too large for the publication window; they
 # are still covered by the per-package runtime verification in the build job.
-heavy_default="ffmpeg-full daed-emo sing-box-ebpf scx-scheds-git vapoursynth-plugin-mlrt-ncnn-runtime"
+heavy_default="daed-emo sing-box-ebpf scx-scheds-git vapoursynth-plugin-mlrt-ncnn-runtime"
 
 [[ -d "$repository_dir" ]] || { printf 'no repository directory: %s\n' "$repository_dir" >&2; exit 2; }
 [[ -d "$incoming_dir" ]] || { printf 'no incoming directory: %s\n' "$incoming_dir" >&2; exit 2; }

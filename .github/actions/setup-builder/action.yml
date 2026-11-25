@@ -95,7 +95,7 @@ runs:
         # the owner's original casing, so an owner such as C-Fuego has to be
         # normalised here rather than interpolated into the reference.
         image_repository="ghcr.io/${IMAGE_REPOSITORY,,}"
-        if [[ "$PACKAGE_NAME" == *cuda* || "$PACKAGE_NAME" == "ffmpeg-full" || "$FLAVOR" == cuda ]]; then
+        if [[ "$PACKAGE_NAME" == *cuda* || "$FLAVOR" == cuda ]]; then
           image="${image_repository}:cuda"
           build_arg=1
         else

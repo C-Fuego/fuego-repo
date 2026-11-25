@@ -6,14 +6,14 @@ context the caller has, and emits a structured failure record:
 
     Failure
     --------------------
-    Package: ffmpeg-full
+    Package: quirc
     Stage:   link
     Category: SONAMEError
     Root cause: missing shared object liboapv.so.2
     Provider: openapv
     ABI mismatch: YES
     Dependents: mpv
-    Recommended action: rebuild ffmpeg-full
+    Recommended action: rebuild quirc
     Auto-fix: level3 (requires rebuild + validation)
     Confidence: high
 
@@ -230,8 +230,8 @@ def failure_chain(
 ) -> list[str]:
     """Direct dependencies of *base*, annotated with their internal provider.
 
-    The tree is capped: ffmpeg-full has ~140 direct dependencies and a full
-    dump buries the two lines that matter.
+    The tree is capped: a media package can have ~140 direct dependencies and
+    a full dump buries the two lines that matter.
     """
     metadata = packages.get(base)
     if metadata is None:

@@ -11,7 +11,7 @@
 #
 # 每行输出 `<kind>\t<package-dir>\t<arg1>[\t<arg2>]`：
 #
-#   soname	ffmpeg-full	libshine.so.3	shine
+#   soname	some-package	libshine.so.3	shine
 #   package	linuxqq-wayland-fix-git	linuxqq
 #
 # `soname` 由 scripts/check-repository-sonames.sh 消费（补充该包的 provider 集合，

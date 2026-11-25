@@ -1,8 +1,0 @@
-!.gitignore
-
-pkg
-src
-*.pkg*
-*.orig
-
-!update.toml

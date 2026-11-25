@@ -90,9 +90,9 @@ if grep -E 'gh workflow run build.yml' "$MOCK_LOG" | grep -Eq 'demo-repack|demo-
   exit 1
 fi
 grep -q 'stale=demo-stale' "$GITHUB_OUTPUT"
-# 冷却中的包不能只从 stale 里消失：调用方（ABI watch 的 issue 步骤）靠
-# deferred 区分「真的没问题」和「有漂移但暂缓」。
-grep -q 'deferred=demo-recent' "$GITHUB_OUTPUT"
+# 活跃、失败冷却、成功冷却中的包都不能从 stale 里消失：调用方靠 deferred
+# 区分「真的没问题」和「有漂移但暂缓」。
+grep -q 'deferred=demo-active,demo-failed,demo-recent' "$GITHUB_OUTPUT"
 # 回归:第二层循环曾因变量名不匹配(_job_status vs job_status)在 set -u 下
 # 第一行数据就崩,SKIP/DEFER 全部失灵——脚本能走完并正确分类即证明已修。
 #

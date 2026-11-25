@@ -14,17 +14,17 @@
 以及人类可读的 `build-plan/plan.txt`（CI 会写进 step summary）。
 
 `./scripts/build-planner.py --selection changed --before HEAD~1 --after HEAD`
-`./scripts/build-planner.py --selection all --repository-manifest published/x86_64/emoeem-abi-manifest.txt`
+`./scripts/build-planner.py --selection all --repository-manifest published-abi/fuego-repo-abi-manifest.txt`
 
 ## 2. DAG 与资源感知调度
 
 `scripts/build-dag.py` 由同一张图算出波次与槽位：真正互相依赖的包被串行化
-（`ffmpeg-full` 必须等 `mpeghdec` / `quirc` / `svt-jpeg-xs-git`），其余按
+（`shorin-contrib-git` 必须等提供 `shorin-pac` 的 `shorin-pac-git`），其余按
 CPU / 内存 / 磁盘 / GPU 权重打包；权重来自 `scripts/data/package-resources.yaml`，
 有实测数据时以实测（CPU 时间、cgroup 峰值内存）为准。
 
 `./scripts/build-dag.py --plan build-plan/plan.json`
-`./scripts/build-dag.py --prerequisites-for ffmpeg-full`
+`./scripts/build-dag.py --prerequisites-for shorin-contrib-git`
 `./scripts/parallel-build.sh --dry-run`     # 只看排期
 `./scripts/parallel-build.sh --jobs 3`      # 本地波次并行构建
 
@@ -53,10 +53,10 @@ Dockerfile 把它写成 LABEL 与 ENV，`builder.yml` 以 build-arg 传入。
 
 | 类别 | 结论 | 依据 |
 | --- | --- | --- |
-| C / C++（ffmpeg-full、mpeghdec、quirc、svt-jpeg-xs-git、vapoursynth 插件） | **保持 ccache**（已在 builder 内，`CCACHE_DIR=/cache/ccache`、`CCACHE_MAXSIZE=2G`、PATH 前置 `/usr/lib/ccache/bin`） | 这些包的构建是「大量小 TU + 反复重编译」，ccache 的 per-TU 命中模型正好匹配；sccache 对本地同机构建没有额外收益，却多一层进程与网络回退风险 |
+| C / C++（flyline、mpeghdec、quirc、svt-jpeg-xs-git） | **保持 ccache**（已在 builder 内，`CCACHE_DIR=/cache/ccache`、`CCACHE_MAXSIZE=2G`、PATH 前置 `/usr/lib/ccache/bin`） | 这些包的构建是「大量小 TU + 反复重编译」，ccache 的 per-TU 命中模型正好匹配；sccache 对本地同机构建没有额外收益，却多一层进程与网络回退风险 |
 | Rust（scx-scheds-git） | **暂不引入 sccache**，先量 | Rust 需要 `RUSTC_WRAPPER`；cargo registry/git 缓存已经覆盖依赖下载，代码本体每次都会重编。是否值得引入要看首次真实构建的 `cpu_seconds` 与 `build` 阶段时长（本仓库目前没有该项的实测数据，不在这里编造） |
-| CUDA（ffmpeg-full 的 nvcc 部分） | **不启用缓存** | nvcc 没有受支持的编译缓存；`ccache` 对 `.cu` 的命中率接近 0，启用只会增加噪声 |
-| Go（daed-emo、sing-box-ebpf）、打包型包 | **不启用** | 构建时间主要在下载与链接，缓存收益低 |
+| CUDA（名称含 `cuda` 的包的 nvcc 部分） | **不启用缓存** | nvcc 没有受支持的编译缓存；`ccache` 对 `.cu` 的命中率接近 0，启用只会增加噪声 |
+| Go、打包型包 | **不启用** | 构建时间主要在下载与链接，缓存收益低 |
 
 命中率不是猜的：`build-in-arch.sh` 在每次构建前 `ccache --zero-stats`，构建后
 `ccache -s` 写入 `dist/ccache-stats.txt`，由 `build-timing.py collect` 解析成

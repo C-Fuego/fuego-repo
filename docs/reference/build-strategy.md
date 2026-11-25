@@ -23,16 +23,16 @@ strategy = "binary"
 
 旧版 `.build-strategy` 读取第一个非空、非 `#` 行。两个格式均接受旧名称 `binary-repack` 作为 `binary` 的别名，新声明使用 `binary`。
 
-## 15 包归类
+## 包归类（25 个包）
 
 | 策略 | 包 |
 |---|---|
-| `source` | ffmpeg-full, mpeghdec, quirc, sing-box-ebpf, sing-box-panel |
-| `vcs` | linuxqq-wayland-fix-git, scx-scheds-git, svt-jpeg-xs-git, xclip-git |
-| `binary` | dsh-desktop-linux-bin, magpie-bin, steamcommunity302, uu-remote-linux-bin |
-| `data` | dracpanel, sing-box-rule-sets |
+| `source` | fcitx5-wetypex, flyline, folia, mpeghdec, quirc, repo-manager, umbriel-fork, zbonsai, zclock, zeraora, ziglet, zlolcat, zmatrix, zpipes |
+| `vcs` | linuxqq-wayland-fix-git, luciole-git, shorin-contrib-git, shorin-pac-git, svt-jpeg-xs-git |
+| `binary` | dsh-desktop-linux-bin, fuego-repo-keyring, magpie-bin, steamcommunity302, uu-remote-linux-bin |
+| `data` | ttf-jetbrains-maple-mono-xx-xx-xx |
 
-`dracpanel` 归 `data` 的依据：`arch=('any')`、tarball 携带预构建 Vite dist、`package()` 只拷静态文件、`check()` 强制 dist 与源码同 commit。
+`ttf-jetbrains-maple-mono-xx-xx-xx` 归 `data` 的依据：`arch=('any')`、source 是上游 release 里预构建的字体 zip、`package()` 只把 `.ttf` 与许可证拷进 `$pkgdir`，没有任何编译步骤。
 
 ## 消费点（三层）
 
