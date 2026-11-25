@@ -40,13 +40,30 @@ find_elf_files() {
         done
 }
 
-# 所有 ELF 对象的 NEEDED 名字，每个一行。
+# 所有 ELF 对象的 NEEDED 名字，每个一行。检查模式下，只有确实随包
+# 提供的 $ORIGIN 路径才跳过全局 SONAME 查询；声明校验仍保留原始条目。
 list_needed() {
-    local elf
+    local elf soname base target relative
+    base="$(realpath -e -- "$1")" || return
     while IFS= read -r -d '' elf; do
-        readelf -d "$elf" 2>/dev/null |
-            awk '/NEEDED/ {gsub(/[\[\]]/, "", $NF); print $NF}'
-    done < <(find_elf_files "$1")
+        while IFS= read -r soname; do
+            if [[ "$mode" == check ]]; then
+                # shellcheck disable=SC2016
+                case "$soname" in
+                    '$ORIGIN/'*|'${ORIGIN}/'*)
+                        relative="${soname#*/}"
+                        if target="$(realpath -e -- "${elf%/*}/$relative" 2>/dev/null)" &&
+                            [[ "$target" == "${base%/}/"* && -f "$target" ]] &&
+                            [[ "$(head -c 4 "$target" | od -An -tx1 | tr -d ' \n')" == 7f454c46 ]]; then
+                            continue
+                        fi
+                        ;;
+                esac
+            fi
+            printf '%s\n' "$soname"
+        done < <(readelf -d "$elf" 2>/dev/null |
+            awk '/\(NEEDED\)/ {sub(/^.*Shared library: \[/, ""); sub(/\]$/, ""); print}')
+    done < <(find_elf_files "$base")
 }
 
 if [[ "$mode" == "list-needed" ]]; then

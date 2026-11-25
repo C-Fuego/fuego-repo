@@ -50,6 +50,24 @@ for candidate in zh_CN.UTF-8 zh_CN.utf8 ja_JP.UTF-8 de_DE.UTF-8 fr_FR.UTF-8; do
   fi
 done
 
+# A path-valued NEEDED is resolved relative to its consumer, not by basename
+# or through the repository provider list. Still report a broken bundle.
+mkdir -p "$tmp/bundle/bin" "$tmp/bundle/lib"
+cc -fPIC -shared "$tmp/lib/fixture.c" -Wl,-soname,'$ORIGIN/../lib/libbundled.so.1' \
+  -o "$tmp/bundle/lib/libbundled.so.1"
+cc "$tmp/bin/main.c" "$tmp/bundle/lib/libbundled.so.1" -o "$tmp/bundle/bin/fixture"
+printf 'libc.so.6\nlibbundled.so.1\n' > "$tmp/providers-bundle"
+"$root/scripts/check-elf-needed.sh" "$tmp/bundle" "$tmp/providers-bundle"
+"$root/scripts/check-elf-needed.sh" --list-needed "$tmp/bundle" > "$tmp/bundle-needed"
+grep -qxF '$ORIGIN/../lib/libbundled.so.1' "$tmp/bundle-needed"
+mkdir "$tmp/bundle/other"
+mv -- "$tmp/bundle/lib/libbundled.so.1" "$tmp/bundle/other/libbundled.so.1"
+if missing=$("$root/scripts/check-elf-needed.sh" "$tmp/bundle" "$tmp/providers-bundle"); then
+  echo 'ELF stale detector accepted a missing path-valued NEEDED' >&2
+  exit 1
+fi
+[[ "$missing" == *'$ORIGIN/../lib/libbundled.so.1'* ]]
+
 make_repo_package() {
   local name="$1" metadata="$2"
   local staging="$tmp/$name"

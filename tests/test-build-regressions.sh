@@ -307,6 +307,17 @@ grep -qF "            '$vendored_sum'" "$overlay_fixture/PKGBUILD" \
     || fail 'overlay did not re-inject the vendored openapv checksum'
 [[ "$(grep -cE '^    patch .*openapv.*[.]patch' "$overlay_fixture/PKGBUILD")" == 1 ]] \
     || fail 'overlay did not re-inject the openapv prepare line exactly once'
+if command -v makepkg >/dev/null && (( EUID != 0 )); then
+    (cd "$overlay_fixture" && makepkg --printsrcinfo) > "$overlay_fixture/generated.srcinfo" \
+        || fail 'makepkg could not read the overlaid PKGBUILD'
+    if grep -qFx $'\tsource = patch' "$overlay_fixture/generated.srcinfo"; then
+        fail 'overlay inserted a prepare command into the source array'
+    fi
+fi
+awk '/^prepare\(\)/ { in_prepare=1 } /^}/ { in_prepare=0 }
+     /^[[:space:]]*patch .*080-ffmpeg-openapv1[.]1-fix[.]patch/ && in_prepare { found++ }
+     END { exit(found != 1) }' "$overlay_fixture/PKGBUILD" \
+    || fail 'the vendored patch command is not inside prepare()'
 
 printf '%s\n' '14/14: verify package checks hash declared sources before a sync commits'
 grep -Fq 'validate-source-cache.sh' "$root/scripts/check-package.sh" \

@@ -68,7 +68,6 @@ grep -qF "'git+https://github.com/lensfun/lensfun.git#commit=${lensfun_pin}'" "$
 #     /usr/share, which fakeroot cannot write (run 43932960088), so instead:
 #     install into staging, patch the generated config.h to the runtime
 #     location, rebuild the static library and reinstall it.
-lensfun_patch='s|#define SYSTEM_DB_PATH .*|#define SYSTEM_DB_PATH "/usr/share/lensfun"|'
 if ! grep -qF 'liblensfun.a still carries the staging prefix' "$pkgbuild"; then
     python3 - "$pkgbuild" <<'PY1C' || fail 'lensfun datadir fixup failed'
 import sys
@@ -390,9 +389,14 @@ else:
     position = sums_decl.end() + match.end()
     text = text[:position] + f"\n{match.group(1)}'{patch_sum}'" + text[position:]
 
-    match = re.search(r'^([ \t]*).*050-ffmpeg-fix-cuda-nvcc-with-gcc14[.]patch[^\n]*$', text, re.M)
-    if not match:
-        fail('prepare() has no 050-ffmpeg-fix-cuda-nvcc-with-gcc14.patch line')
+    # The same filename appears earlier in source=(); match the command,
+    # not the array entry. Otherwise makepkg reads the injected command as sources.
+    matches = list(re.finditer(
+        r'^[ \t]*patch[ \t]+[^\n]*050-ffmpeg-fix-cuda-nvcc-with-gcc14[.]patch[^\n]*$',
+        text, re.M))
+    if len(matches) != 1:
+        fail('expected exactly one prepare() command applying 050-ffmpeg-fix-cuda-nvcc-with-gcc14.patch')
+    match = matches[0]
     position = match.end()
     text = (text[:position] +
             f'\n    patch -d "ffmpeg-${{pkgver}}" -Np1 -i "${{srcdir}}/{patch_name}"' +
