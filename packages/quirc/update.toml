@@ -1,4 +1,0 @@
-track = "aur"
-strategy = "source"
-url = "https://aur.archlinux.org/quirc.git"
-commit = "4a95e73db783996ef9ead0639c7f6ec7ca611b01"
