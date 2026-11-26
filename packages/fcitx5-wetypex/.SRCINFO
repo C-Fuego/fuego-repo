@@ -1,7 +1,7 @@
 pkgbase = fcitx5-wetypex
 	pkgdesc = Native Linux compatibility layer for WeType on Fcitx5
 	pkgver = 3.0.1.684
-	pkgrel = 11
+	pkgrel = 12
 	url = https://github.com/panxuc/fcitx5-wetypex
 	install = fcitx5-wetypex.install
 	arch = x86_64

@@ -2,7 +2,7 @@
 
 pkgname=fcitx5-wetypex
 pkgver=3.0.1.684
-pkgrel=11
+pkgrel=12
 # emoeem overlay: keep the upstream asset revision independent of local pkgrel bumps.
 _source_revision=10
 pkgdesc="Native Linux compatibility layer for WeType on Fcitx5"
